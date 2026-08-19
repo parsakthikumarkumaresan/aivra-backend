@@ -1,0 +1,87 @@
+[project]
+name = "aivra-backend"
+version = "0.1.0"
+description = "AIVRA AI Workforce Operating System — backend platform"
+requires-python = ">=3.12"
+readme = "README.md"
+
+dependencies = [
+    "fastapi>=0.115.0,<0.116.0",
+    "uvicorn[standard]>=0.32.0,<0.33.0",
+    "pydantic>=2.9.0,<3.0.0",
+    "pydantic-settings>=2.6.0,<3.0.0",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1.0",
+    "alembic>=1.14.0,<1.15.0",
+    "asyncpg>=0.30.0,<0.31.0",
+    "psycopg[binary]>=3.2.3,<3.3.0",
+    "pgvector>=0.3.6,<0.4.0",
+    "redis>=5.2.0,<6.0.0",
+    "rq>=2.1.0,<3.0.0",
+    "argon2-cffi>=23.1.0,<24.0.0",
+    "pyjwt[crypto]>=2.10.0,<3.0.0",
+    "python-multipart>=0.0.17,<0.0.18",
+    "httpx>=0.27.2,<0.28.0",
+    "boto3>=1.35.0,<2.0.0",
+    "structlog>=24.4.0,<25.0.0",
+    "orjson>=3.10.0,<4.0.0",
+    "tenacity>=9.0.0,<10.0.0",
+    "email-validator>=2.2.0,<3.0.0",
+    "python-ulid>=2.7.0,<3.0.0",
+    "pypdf>=5.1.0,<6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-asyncio>=0.24.0,<0.25.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "ruff>=0.7.0,<0.8.0",
+    "mypy>=1.13.0,<2.0.0",
+    "faker>=30.8.0,<31.0.0",
+    "python-dotenv>=1.0.1,<2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+# S101: assert is fine (tests + explicit invariants). B008: Depends(...) as a
+# default argument is the required FastAPI dependency-injection idiom, not a
+# real function-call-in-default-argument bug.
+ignore = ["S101", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures use fixed literal passwords by design, not real secrets.
+"tests/**" = ["S105", "S106"]
+# False-positive "hardcoded password" heuristic on enum members whose *names*
+# contain "token" (id prefixes, error codes) — no secret value involved.
+"app/shared/database/ids.py" = ["S105"]
+"app/shared/errors/codes.py" = ["S105"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+disallow_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["migrations", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    # Cosmetic pydantic v2 warning from OpenAPI schema generation when a
+    # CamelModel field also happens to share a name pydantic treats
+    # specially (e.g. EmailStr fields); does not affect alias behavior at
+    # runtime — verified serialization manually, see app/shared/schemas/base.py.
+    "ignore::UserWarning:pydantic",
+]
