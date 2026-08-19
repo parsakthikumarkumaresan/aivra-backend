@@ -3,14 +3,17 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai_employees.hr.api.candidates import to_candidate_response
 from app.ai_employees.hr.api.dependencies import require_hr_active, require_hr_role
 from app.ai_employees.hr.repositories.assessment_repository import AssessmentRepository
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.job_repository import JobRepository
 from app.ai_employees.hr.repositories.processing_job_repository import ProcessingJobRepository
 from app.ai_employees.hr.repositories.resume_repository import ResumeRepository
 from app.ai_employees.hr.schemas.assessment import AssessmentResponse
-from app.ai_employees.hr.schemas.candidate import CandidateResponse
 from app.ai_employees.hr.schemas.resume import (
     ConfirmIdentityRequest,
     ConfirmIdentityResponse,
@@ -35,11 +38,16 @@ def _service(db: AsyncSession = Depends(get_db)) -> ResumeService:
     return ResumeService(
         ResumeRepository(db),
         CandidateRepository(db),
+        CandidateIdentityRepository(db),
         JobRepository(db),
         ProcessingJobRepository(db),
         get_object_storage(StorageCategory.DOCUMENTS),
         AuditService(AuditRepository(db)),
     )
+
+
+def _identity_repo(db: AsyncSession = Depends(get_db)) -> CandidateIdentityRepository:
+    return CandidateIdentityRepository(db)
 
 
 @router.post("", response_model=UploadResumeResponse, status_code=201)
@@ -81,14 +89,16 @@ async def confirm_identity(
     background_tasks: BackgroundTasks,
     auth: AuthContext = Depends(require_hr_role(*HR_OPERATOR_ROLES)),
     service: ResumeService = Depends(_service),
+    identity_repo: CandidateIdentityRepository = Depends(_identity_repo),
 ) -> ConfirmIdentityResponse:
     """HR supplies/corrects the candidate identity for a resume the pipeline
     paused in NEEDS_IDENTITY_REVIEW (extraction couldn't produce a usable
     name/email on its own) — this is what creates the Candidate and resumes
     normalizing + JD matching in the background.
     """
+    organization_id = auth.require_organization_id()
     candidate, resume, processing_job = await service.confirm_identity(
-        organization_id=auth.require_organization_id(),
+        organization_id=organization_id,
         resume_id=resume_id,
         full_name=payload.full_name,
         email=payload.email,
@@ -98,12 +108,16 @@ async def confirm_identity(
 
     background_tasks.add_task(
         enqueue_resume_processing,
-        organization_id=auth.require_organization_id(),
+        organization_id=organization_id,
         resume_id=resume.id,
     )
 
+    identity = await identity_repo.get_by_id(organization_id, candidate.identity_id)
+    if identity is None:
+        raise NotFoundError("Candidate identity not found.")
+
     return ConfirmIdentityResponse(
-        candidate=CandidateResponse.model_validate(candidate),
+        candidate=to_candidate_response(candidate, identity),
         resume=ResumeResponse.model_validate(resume),
         processing_job=ProcessingJobResponse.model_validate(processing_job),
     )

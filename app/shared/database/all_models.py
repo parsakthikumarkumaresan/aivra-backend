@@ -8,7 +8,7 @@ contains no logic, just imports.
 from __future__ import annotations
 
 from app.ai_employees.hr.models.assessment import Assessment  # noqa: F401
-from app.ai_employees.hr.models.candidate import Candidate  # noqa: F401
+from app.ai_employees.hr.models.candidate import Candidate, CandidateIdentity  # noqa: F401
 from app.ai_employees.hr.models.integration import CalendarIntegration  # noqa: F401
 from app.ai_employees.hr.models.interview import Interview  # noqa: F401
 from app.ai_employees.hr.models.job import HrJob  # noqa: F401

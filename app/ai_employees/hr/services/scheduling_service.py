@@ -18,6 +18,9 @@ from app.ai_employees.hr.models.candidate import CANDIDATE_TRANSITIONS, Candidat
 from app.ai_employees.hr.models.integration import IntegrationProvider
 from app.ai_employees.hr.models.interview import INTERVIEW_TRANSITIONS, Interview, InterviewStatus
 from app.ai_employees.hr.models.schedule_slot import ScheduleSlot
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.integration_repository import IntegrationRepository
 from app.ai_employees.hr.repositories.interview_repository import InterviewRepository
@@ -31,12 +34,14 @@ class SchedulingService:
         interview_repo: InterviewRepository,
         slot_repo: ScheduleSlotRepository,
         candidate_repo: CandidateRepository,
+        identity_repo: CandidateIdentityRepository,
         integration_repo: IntegrationRepository,
         calendar_provider: CalendarProvider,
     ) -> None:
         self.interview_repo = interview_repo
         self.slot_repo = slot_repo
         self.candidate_repo = candidate_repo
+        self.identity_repo = identity_repo
         self.integration_repo = integration_repo
         self.calendar_provider = calendar_provider
 
@@ -121,12 +126,15 @@ class SchedulingService:
         )
         if integration is None:
             return None
+        identity = await self.identity_repo.get_by_id(organization_id, candidate.identity_id)
+        if identity is None:
+            return None
         event = await self.calendar_provider.create_event(
             access_token=integration.access_token,
-            title=f"Interview: {candidate.full_name} — {job_title}",
+            title=f"Interview: {identity.full_name} — {job_title}",
             start_time=slot.start_time,
             end_time=slot.end_time,
-            attendee_emails=[candidate.email],
+            attendee_emails=[identity.email],
         )
         return event.meeting_link
 

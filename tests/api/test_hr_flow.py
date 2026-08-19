@@ -17,7 +17,12 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai_employees.hr.models.candidate import Candidate, CandidateSource, CandidateStage
+from app.ai_employees.hr.models.candidate import (
+    Candidate,
+    CandidateIdentity,
+    CandidateSource,
+    CandidateStage,
+)
 from app.ai_employees.hr.models.job import EmploymentType, HrJob, JobStatus
 from app.ai_employees.provisioning.models.provision import EmployeeProvision, ProvisionStatus
 from app.ai_employees.registry.models.catalog import (
@@ -82,6 +87,21 @@ async def _activate_hr(db_session: AsyncSession, organization_id: str) -> None:
     await db_session.flush()
 
 
+async def _seed_identity(
+    db_session: AsyncSession,
+    organization_id: str,
+    *,
+    full_name: str = "Jane Doe",
+    email: str = "jane@example.com",
+) -> CandidateIdentity:
+    identity = CandidateIdentity(
+        organization_id=organization_id, full_name=full_name, email=email
+    )
+    db_session.add(identity)
+    await db_session.flush()
+    return identity
+
+
 async def _seed_hr_review_candidate(
     db_session: AsyncSession, organization_id: str, interviewer_user_id: str
 ) -> tuple[HrJob, Candidate]:
@@ -96,11 +116,12 @@ async def _seed_hr_review_candidate(
     db_session.add(job)
     await db_session.flush()
 
+    identity = await _seed_identity(db_session, organization_id)
+
     candidate = Candidate(
         organization_id=organization_id,
         job_id=job.id,
-        full_name="Jane Doe",
-        email="jane@example.com",
+        identity_id=identity.id,
         source=CandidateSource.RESUME_UPLOAD,
         stage=CandidateStage.HR_REVIEW,
     )

@@ -5,6 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_employees.hr.api.dependencies import require_hr_active, require_hr_role
 from app.ai_employees.hr.integrations.factory import get_calendar_provider
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.integration_repository import IntegrationRepository
 from app.ai_employees.hr.repositories.interview_repository import InterviewRepository
@@ -31,6 +34,7 @@ def _service(db: AsyncSession = Depends(get_db)) -> SchedulingService:
         InterviewRepository(db),
         ScheduleSlotRepository(db),
         CandidateRepository(db),
+        CandidateIdentityRepository(db),
         IntegrationRepository(db),
         get_calendar_provider(),
     )

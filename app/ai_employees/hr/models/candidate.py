@@ -1,14 +1,39 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database.base import Base, OrgScopedMixin
 from app.shared.database.ids import IdPrefix, new_id
 from app.shared.database.types import str_enum_column
 from app.shared.state_machine import StateMachine
+
+
+class CandidateIdentity(Base, OrgScopedMixin):
+    """A person, within one tenant — reusable across every job they apply to.
+
+    Deliberately separate from ``Candidate`` (below), which represents one
+    person's recruitment relationship with one specific job. Without this
+    split, "reject this person for Job A" and "this person is applying to
+    Job B" could not be represented independently — see
+    app.ai_employees.hr.services.candidate_identity for how the two combine.
+
+    Scoped to one organization: the same email in two different
+    organizations is two different, unrelated identities (spec section 7 —
+    tenant isolation is never bypassed for deduplication).
+    """
+
+    __tablename__ = "candidate_identities"
+
+    id: Mapped[str] = mapped_column(
+        String(40), primary_key=True, default=lambda: new_id(IdPrefix.CANDIDATE_IDENTITY)
+    )
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    phone: Mapped[str | None] = mapped_column(String(40))
 
 
 class CandidateSource(StrEnum):
@@ -18,7 +43,9 @@ class CandidateSource(StrEnum):
 
 
 class CandidateStage(StrEnum):
-    """Spec section 43.3."""
+    """Spec section 43.3. Per-application (per-job) recruitment status —
+    see CandidateIdentity above for the person-level identity this excludes.
+    """
 
     NEW = "new"
     PROCESSING = "processing"
@@ -66,8 +93,10 @@ def _build_candidate_transitions() -> dict[CandidateStage, frozenset[CandidateSt
     for stage in hold_eligible:
         transitions[stage].add(CandidateStage.ON_HOLD)
     transitions[CandidateStage.ON_HOLD] = {CandidateStage.HR_REVIEW}
+    # Explicit human "Reconsider / Reopen" action (never automatic — see
+    # CandidateService.reconsider) is the only way out of REJECTED.
+    transitions[CandidateStage.REJECTED] = {CandidateStage.HR_REVIEW}
     transitions[CandidateStage.COMPLETED] = set()
-    transitions[CandidateStage.REJECTED] = set()
     transitions[CandidateStage.WITHDRAWN] = set()
 
     return {stage: frozenset(targets) for stage, targets in transitions.items()}
@@ -77,17 +106,27 @@ CANDIDATE_TRANSITIONS = StateMachine[CandidateStage](_build_candidate_transition
 
 
 class Candidate(Base, OrgScopedMixin):
+    """One person's recruitment relationship with one specific job — the
+    per-job "application". ``identity_id`` links back to the shared person
+    record (CandidateIdentity) so the same person can hold independent
+    Candidate rows (independent stages, independent rejections) across
+    multiple jobs without cross-contaminating each other.
+    """
+
     __tablename__ = "candidates"
 
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=lambda: new_id(IdPrefix.CANDIDATE)
     )
+    identity_id: Mapped[str] = mapped_column(
+        String(40),
+        ForeignKey("candidate_identities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     job_id: Mapped[str] = mapped_column(
         String(40), ForeignKey("hr_jobs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
-    phone: Mapped[str | None] = mapped_column(String(40))
     source: Mapped[CandidateSource] = mapped_column(
         str_enum_column(CandidateSource, 20), default=CandidateSource.RESUME_UPLOAD, nullable=False
     )
@@ -96,3 +135,9 @@ class Candidate(Base, OrgScopedMixin):
     )
     resume_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     rejected_reason: Mapped[str | None] = mapped_column(Text)
+    # Archival (lifecycle visibility) is orthogonal to `stage` (recruitment
+    # progress) — a REJECTED or HR_REVIEW application can be archived and
+    # later restored without touching its stage/decision history. See
+    # CandidateService.archive/restore vs. reconsider.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_user_id: Mapped[str | None] = mapped_column(String(40), nullable=True)

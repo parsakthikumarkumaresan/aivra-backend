@@ -43,6 +43,9 @@ from app.ai_employees.hr.models.job import HrJob
 from app.ai_employees.hr.models.processing_job import ProcessingJob, ProcessingJobStatus
 from app.ai_employees.hr.models.resume import RESUME_TRANSITIONS, Resume, ResumeProcessingStatus
 from app.ai_employees.hr.repositories.assessment_repository import AssessmentRepository
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.job_repository import JobRepository
 from app.ai_employees.hr.repositories.resume_repository import ResumeRepository
@@ -62,7 +65,11 @@ from app.ai_employees.hr.schemas.job_requirements import (
     JOB_REQUIREMENTS_SYSTEM_PROMPT,
     JobRequirementsExtraction,
 )
-from app.ai_employees.hr.services.candidate_identity import get_or_create_candidate, identity_issues
+from app.ai_employees.hr.services.candidate_identity import (
+    get_or_create_candidate,
+    get_or_create_identity,
+    identity_issues,
+)
 from app.core.logging import get_logger
 from app.shared.ai_providers.factory import get_ocr_provider
 from app.shared.storage.factory import StorageCategory, get_object_storage
@@ -119,6 +126,7 @@ async def run_resume_pipeline(
 ) -> None:
     resume_repo = ResumeRepository(session)
     candidate_repo = CandidateRepository(session)
+    identity_repo = CandidateIdentityRepository(session)
     job_repo = JobRepository(session)
     assessment_repo = AssessmentRepository(session)
 
@@ -140,7 +148,11 @@ async def run_resume_pipeline(
         await _run_ocr_stage(resume)
         _run_parsing_stage(resume)
         candidate = await _run_extraction_stage(
-            resume, candidate=candidate, candidate_repo=candidate_repo, job_id=job.id
+            resume,
+            candidate=candidate,
+            candidate_repo=candidate_repo,
+            identity_repo=identity_repo,
+            job_id=job.id,
         )
 
         if resume.status == ResumeProcessingStatus.NEEDS_IDENTITY_REVIEW:
@@ -229,6 +241,7 @@ async def _run_extraction_stage(
     *,
     candidate: Candidate | None,
     candidate_repo: CandidateRepository,
+    identity_repo: CandidateIdentityRepository,
     job_id: str,
 ) -> Candidate | None:
     """Runs AI extraction, then business-validates the extracted identity and
@@ -267,13 +280,18 @@ async def _run_extraction_stage(
         return candidate
 
     if candidate is None:
+        identity, _identity_created = await get_or_create_identity(
+            identity_repo,
+            organization_id=resume.organization_id,
+            full_name=profile.full_name,
+            email=profile.email,
+            phone=profile.phone,
+        )
         candidate, _created = await get_or_create_candidate(
             candidate_repo,
             organization_id=resume.organization_id,
             job_id=job_id,
-            full_name=profile.full_name,
-            email=profile.email,
-            phone=profile.phone,
+            identity_id=identity.id,
             source=CandidateSource.RESUME_UPLOAD,
         )
         resume.candidate_id = candidate.id

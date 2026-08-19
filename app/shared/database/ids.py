@@ -39,6 +39,7 @@ class IdPrefix:
     NOTIFICATION = "notif"
     AUDIT_EVENT = "audit"
     HR_JOB = "job"
+    CANDIDATE_IDENTITY = "ident"
     CANDIDATE = "cand"
     RESUME = "resume"
     PROCESSING_JOB = "pjob"

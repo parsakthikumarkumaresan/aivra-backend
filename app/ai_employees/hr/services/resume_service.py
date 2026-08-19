@@ -17,11 +17,18 @@ from __future__ import annotations
 from app.ai_employees.hr.models.candidate import Candidate, CandidateSource
 from app.ai_employees.hr.models.processing_job import ProcessingJob
 from app.ai_employees.hr.models.resume import RESUME_TRANSITIONS, Resume, ResumeProcessingStatus
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.job_repository import JobRepository
 from app.ai_employees.hr.repositories.processing_job_repository import ProcessingJobRepository
 from app.ai_employees.hr.repositories.resume_repository import ResumeRepository
-from app.ai_employees.hr.services.candidate_identity import get_or_create_candidate, identity_issues
+from app.ai_employees.hr.services.candidate_identity import (
+    get_or_create_candidate,
+    get_or_create_identity,
+    identity_issues,
+)
 from app.audit.models.audit_event import ActorType
 from app.audit.services.audit_service import AuditService
 from app.shared.database.ids import IdPrefix, new_id
@@ -41,6 +48,7 @@ class ResumeService:
         self,
         resume_repo: ResumeRepository,
         candidate_repo: CandidateRepository,
+        identity_repo: CandidateIdentityRepository,
         job_repo: JobRepository,
         processing_job_repo: ProcessingJobRepository,
         storage: ObjectStorage,
@@ -48,6 +56,7 @@ class ResumeService:
     ) -> None:
         self.resume_repo = resume_repo
         self.candidate_repo = candidate_repo
+        self.identity_repo = identity_repo
         self.job_repo = job_repo
         self.processing_job_repo = processing_job_repo
         self.storage = storage
@@ -132,13 +141,18 @@ class ResumeService:
         if issues:
             raise ValidationAppError("; ".join(issues))
 
+        identity, _identity_created = await get_or_create_identity(
+            self.identity_repo,
+            organization_id=organization_id,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+        )
         candidate, created = await get_or_create_candidate(
             self.candidate_repo,
             organization_id=organization_id,
             job_id=resume.job_id,
-            full_name=full_name,
-            email=email,
-            phone=phone,
+            identity_id=identity.id,
             source=CandidateSource.RESUME_UPLOAD,
         )
         RESUME_TRANSITIONS.assert_transition_allowed(

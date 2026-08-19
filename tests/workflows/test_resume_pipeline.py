@@ -22,6 +22,9 @@ from app.ai_employees.hr.models.job import EmploymentType, HrJob, JobStatus
 from app.ai_employees.hr.models.processing_job import ProcessingJob, ProcessingJobStatus
 from app.ai_employees.hr.models.resume import ResumeProcessingStatus
 from app.ai_employees.hr.repositories.assessment_repository import AssessmentRepository
+from app.ai_employees.hr.repositories.candidate_identity_repository import (
+    CandidateIdentityRepository,
+)
 from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.job_repository import JobRepository
 from app.ai_employees.hr.repositories.processing_job_repository import ProcessingJobRepository
@@ -95,6 +98,7 @@ def _resume_service(db_session: AsyncSession, storage) -> ResumeService:
     return ResumeService(
         ResumeRepository(db_session),
         CandidateRepository(db_session),
+        CandidateIdentityRepository(db_session),
         JobRepository(db_session),
         ProcessingJobRepository(db_session),
         storage,
@@ -166,8 +170,12 @@ async def test_resume_pipeline_happy_path(
 
     candidate_row = await CandidateRepository(db_session).get_by_id(org.id, resume_row.candidate_id)
     assert candidate_row is not None
-    assert candidate_row.full_name == "Jane Doe"
-    assert candidate_row.email == "jane@example.com"
+    identity_row = await CandidateIdentityRepository(db_session).get_by_id(
+        org.id, candidate_row.identity_id
+    )
+    assert identity_row is not None
+    assert identity_row.full_name == "Jane Doe"
+    assert identity_row.email == "jane@example.com"
     assert candidate_row.resume_id == resume.id
     # MATCHED is a momentary waypoint — matching immediately makes the
     # candidate actionable for HR, so it lands on HR_REVIEW (spec section 9.1).
@@ -247,8 +255,11 @@ async def test_confirm_identity_creates_candidate_and_resumes_pipeline(
         phone=None,
         actor_id="user_test",
     )
-    assert candidate.full_name == "Jane Doe"
-    assert candidate.email == "jane@example.com"
+    identity_repo = CandidateIdentityRepository(db_session)
+    identity = await identity_repo.get_by_id(org.id, candidate.identity_id)
+    assert identity is not None
+    assert identity.full_name == "Jane Doe"
+    assert identity.email == "jane@example.com"
     assert candidate.stage == CandidateStage.PROCESSING
     assert resume_after_confirm.status == ResumeProcessingStatus.NORMALIZING
     assert resume_after_confirm.candidate_id == candidate.id
