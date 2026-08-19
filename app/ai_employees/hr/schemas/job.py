@@ -17,6 +17,10 @@ class JobResponse(CamelModel):
     employment_type: str
     status: str
     created_at: datetime
+    # Not a column on HrJob — computed by JobService.list_jobs/get_job from a
+    # real COUNT query, never left unset (frontend Job.candidateCount is
+    # required, not optional).
+    candidate_count: int = 0
 
 
 class CreateJobRequest(CamelModel):

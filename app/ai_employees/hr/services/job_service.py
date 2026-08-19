@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from app.ai_employees.hr.models.job import EmploymentType, HrJob, JobStatus
+from app.ai_employees.hr.repositories.candidate_repository import CandidateRepository
 from app.ai_employees.hr.repositories.job_repository import JobRepository
 from app.shared.errors.exceptions import NotFoundError
 
 
 class JobService:
-    def __init__(self, job_repo: JobRepository) -> None:
+    def __init__(self, job_repo: JobRepository, candidate_repo: CandidateRepository) -> None:
         self.job_repo = job_repo
+        self.candidate_repo = candidate_repo
 
     async def create_job(
         self,
@@ -34,11 +36,18 @@ class JobService:
         )
         return await self.job_repo.add(job)
 
-    async def list_jobs(self, organization_id: str) -> list[HrJob]:
-        return await self.job_repo.list_for_organization(organization_id)
+    async def list_jobs_with_candidate_counts(
+        self, organization_id: str
+    ) -> list[tuple[HrJob, int]]:
+        jobs = await self.job_repo.list_for_organization(organization_id)
+        counts = await self.candidate_repo.count_by_job(organization_id)
+        return [(job, counts.get(job.id, 0)) for job in jobs]
 
-    async def get_job(self, organization_id: str, job_id: str) -> HrJob:
+    async def get_job_with_candidate_count(
+        self, organization_id: str, job_id: str
+    ) -> tuple[HrJob, int]:
         job = await self.job_repo.get_by_id(organization_id, job_id)
         if job is None:
             raise NotFoundError("Job not found.")
-        return job
+        counts = await self.candidate_repo.count_by_job(organization_id)
+        return job, counts.get(job.id, 0)

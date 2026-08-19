@@ -20,6 +20,12 @@ class ResumeProcessingStatus(StrEnum):
     OCR_PROCESSING = "ocr_processing"
     PARSING = "parsing"
     EXTRACTING = "extracting"
+    # Extraction succeeded but the extracted profile has no usable name/email
+    # (see app.ai_employees.hr.workflows.resume_pipeline._identity_issues) —
+    # the pipeline cannot create a Candidate from untrusted, unusable
+    # identity data, so it pauses here until HR supplies/corrects it via
+    # POST /hr/resumes/{id}/confirm-identity.
+    NEEDS_IDENTITY_REVIEW = "needs_identity_review"
     NORMALIZING = "normalizing"
     MATCHING = "matching"
     COMPLETED = "completed"
@@ -42,7 +48,16 @@ RESUME_TRANSITIONS = StateMachine[ResumeProcessingStatus](
             {ResumeProcessingStatus.EXTRACTING, ResumeProcessingStatus.PROCESSING_FAILED}
         ),
         ResumeProcessingStatus.EXTRACTING: frozenset(
-            {ResumeProcessingStatus.NORMALIZING, ResumeProcessingStatus.EXTRACTION_FAILED}
+            {
+                ResumeProcessingStatus.NORMALIZING,
+                ResumeProcessingStatus.NEEDS_IDENTITY_REVIEW,
+                ResumeProcessingStatus.EXTRACTION_FAILED,
+            }
+        ),
+        # HR confirming/correcting identity (ResumeService.confirm_identity)
+        # is what moves this forward — never automatic.
+        ResumeProcessingStatus.NEEDS_IDENTITY_REVIEW: frozenset(
+            {ResumeProcessingStatus.NORMALIZING}
         ),
         ResumeProcessingStatus.NORMALIZING: frozenset(
             {ResumeProcessingStatus.MATCHING, ResumeProcessingStatus.EXTRACTION_FAILED}
@@ -67,8 +82,17 @@ class Resume(Base, OrgScopedMixin):
     id: Mapped[str] = mapped_column(
         String(40), primary_key=True, default=lambda: new_id(IdPrefix.RESUME)
     )
-    candidate_id: Mapped[str] = mapped_column(
-        String(40), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True
+    # Known at upload time (HR picks the job before dragging in a file) and
+    # is the pipeline's only route to the job's requirements before a
+    # Candidate exists — see JobRepository usage in resume_pipeline.py.
+    job_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("hr_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Nullable: the Candidate is only created once AI extraction produces a
+    # usable name/email (or HR supplies one via confirm-identity) — a resume
+    # can legitimately sit in NEEDS_IDENTITY_REVIEW with no candidate yet.
+    candidate_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=True, index=True
     )
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)

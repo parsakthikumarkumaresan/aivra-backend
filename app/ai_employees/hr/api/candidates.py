@@ -10,7 +10,11 @@ from app.ai_employees.hr.repositories.candidate_repository import CandidateRepos
 from app.ai_employees.hr.repositories.integration_repository import IntegrationRepository
 from app.ai_employees.hr.repositories.interview_repository import InterviewRepository
 from app.ai_employees.hr.repositories.schedule_slot_repository import ScheduleSlotRepository
-from app.ai_employees.hr.schemas.candidate import CandidateDecisionRequest, CandidateResponse
+from app.ai_employees.hr.schemas.candidate import (
+    CandidateDecisionRequest,
+    CandidateResponse,
+    UpdateCandidateIdentityRequest,
+)
 from app.ai_employees.hr.services.candidate_service import CandidateService
 from app.ai_employees.hr.services.scheduling_service import SchedulingService
 from app.audit.repositories.audit_repository import AuditRepository
@@ -62,6 +66,24 @@ async def get_candidate(
     service: CandidateService = Depends(_service),
 ) -> CandidateResponse:
     candidate = await service.get_candidate(auth.require_organization_id(), candidate_id)
+    return CandidateResponse.model_validate(candidate)
+
+
+@router.patch("/{candidate_id}", response_model=CandidateResponse)
+async def update_candidate_identity(
+    candidate_id: str,
+    payload: UpdateCandidateIdentityRequest,
+    auth: AuthContext = Depends(require_hr_role(*HR_OPERATOR_ROLES)),
+    service: CandidateService = Depends(_service),
+) -> CandidateResponse:
+    candidate = await service.update_identity(
+        auth.require_organization_id(),
+        candidate_id,
+        actor_id=auth.user.id,
+        full_name=payload.full_name,
+        email=payload.email,
+        phone=payload.phone,
+    )
     return CandidateResponse.model_validate(candidate)
 
 

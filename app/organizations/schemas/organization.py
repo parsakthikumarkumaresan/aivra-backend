@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import Field
 
 from app.shared.schemas.base import CamelModel
@@ -12,6 +14,7 @@ class OrganizationResponse(CamelModel):
     industry: str | None
     timezone: str
     status: str
+    created_at: datetime
 
 
 class UpdateOrganizationRequest(CamelModel):

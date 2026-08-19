@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.ai_employees.hr.models.candidate import Candidate, CandidateStage
 from app.shared.database.repository import OrgScopedRepository
@@ -8,6 +8,34 @@ from app.shared.database.repository import OrgScopedRepository
 
 class CandidateRepository(OrgScopedRepository[Candidate]):
     model = Candidate
+
+    async def count_by_job(self, organization_id: str) -> dict[str, int]:
+        """One GROUP BY query for every job's candidate count, rather than
+        an N+1 count-per-job — used by JobService to populate
+        JobResponse.candidate_count for a whole list at once.
+        """
+        stmt = (
+            select(Candidate.job_id, func.count(Candidate.id))
+            .where(Candidate.organization_id == organization_id)
+            .group_by(Candidate.job_id)
+        )
+        result = await self.session.execute(stmt)
+        return {job_id: count for job_id, count in result.all()}
+
+    async def find_by_job_and_email(
+        self, organization_id: str, job_id: str, email: str
+    ) -> Candidate | None:
+        """Used to make candidate creation from resume identity idempotent —
+        a re-uploaded/duplicate resume for the same job+person reuses the
+        existing Candidate instead of creating a second one.
+        """
+        stmt = select(Candidate).where(
+            Candidate.organization_id == organization_id,
+            Candidate.job_id == job_id,
+            Candidate.email == email,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def list_filtered(
         self,

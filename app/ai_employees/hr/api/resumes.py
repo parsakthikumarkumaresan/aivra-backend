@@ -12,11 +12,15 @@ from app.ai_employees.hr.repositories.resume_repository import ResumeRepository
 from app.ai_employees.hr.schemas.assessment import AssessmentResponse
 from app.ai_employees.hr.schemas.candidate import CandidateResponse
 from app.ai_employees.hr.schemas.resume import (
+    ConfirmIdentityRequest,
+    ConfirmIdentityResponse,
     ProcessingJobResponse,
     ResumeResponse,
     UploadResumeResponse,
 )
 from app.ai_employees.hr.services.resume_service import ResumeService
+from app.audit.repositories.audit_repository import AuditRepository
+from app.audit.services.audit_service import AuditService
 from app.shared.database.session import get_db
 from app.shared.errors.exceptions import NotFoundError
 from app.shared.rbac.roles import HR_OPERATOR_ROLES
@@ -34,6 +38,7 @@ def _service(db: AsyncSession = Depends(get_db)) -> ResumeService:
         JobRepository(db),
         ProcessingJobRepository(db),
         get_object_storage(StorageCategory.DOCUMENTS),
+        AuditService(AuditRepository(db)),
     )
 
 
@@ -41,23 +46,17 @@ def _service(db: AsyncSession = Depends(get_db)) -> ResumeService:
 async def upload_resume(
     background_tasks: BackgroundTasks,
     job_id: str = Form(...),
-    candidate_name: str = Form(...),
-    candidate_email: str = Form(...),
-    candidate_phone: str | None = Form(None),
     file: UploadFile = File(...),
     auth: AuthContext = Depends(require_hr_role(*HR_OPERATOR_ROLES)),
     service: ResumeService = Depends(_service),
 ) -> UploadResumeResponse:
     content = await file.read()
-    candidate, resume, processing_job = await service.upload_resume(
+    resume, processing_job = await service.upload_resume(
         organization_id=auth.require_organization_id(),
         job_id=job_id,
         filename=file.filename or "resume.pdf",
         content_type=file.content_type or "application/octet-stream",
         content=content,
-        candidate_name=candidate_name,
-        candidate_email=candidate_email,
-        candidate_phone=candidate_phone,
     )
 
     # Enqueued via BackgroundTasks (runs after the response — and after the
@@ -70,6 +69,40 @@ async def upload_resume(
     )
 
     return UploadResumeResponse(
+        resume=ResumeResponse.model_validate(resume),
+        processing_job=ProcessingJobResponse.model_validate(processing_job),
+    )
+
+
+@router.post("/{resume_id}/confirm-identity", response_model=ConfirmIdentityResponse)
+async def confirm_identity(
+    resume_id: str,
+    payload: ConfirmIdentityRequest,
+    background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(require_hr_role(*HR_OPERATOR_ROLES)),
+    service: ResumeService = Depends(_service),
+) -> ConfirmIdentityResponse:
+    """HR supplies/corrects the candidate identity for a resume the pipeline
+    paused in NEEDS_IDENTITY_REVIEW (extraction couldn't produce a usable
+    name/email on its own) — this is what creates the Candidate and resumes
+    normalizing + JD matching in the background.
+    """
+    candidate, resume, processing_job = await service.confirm_identity(
+        organization_id=auth.require_organization_id(),
+        resume_id=resume_id,
+        full_name=payload.full_name,
+        email=payload.email,
+        phone=payload.phone,
+        actor_id=auth.user.id,
+    )
+
+    background_tasks.add_task(
+        enqueue_resume_processing,
+        organization_id=auth.require_organization_id(),
+        resume_id=resume.id,
+    )
+
+    return ConfirmIdentityResponse(
         candidate=CandidateResponse.model_validate(candidate),
         resume=ResumeResponse.model_validate(resume),
         processing_job=ProcessingJobResponse.model_validate(processing_job),

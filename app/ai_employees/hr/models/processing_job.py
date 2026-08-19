@@ -16,6 +16,11 @@ class ProcessingJobStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    # The pipeline ran successfully as far as it could (OCR, extraction) but
+    # paused because the extracted identity wasn't usable — not a failure of
+    # the job itself, distinct from FAILED so HR/ops dashboards don't treat
+    # "needs a human" the same as "broke".
+    NEEDS_REVIEW = "needs_review"
 
 
 class ProcessingJob(Base, OrgScopedMixin):

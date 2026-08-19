@@ -245,6 +245,47 @@ async def test_candidate_approval_screening_and_scheduling_flow(
     assert final_candidate.stage == CandidateStage.COMPLETED
 
 
+async def test_candidate_identity_correction_endpoint(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    session = await _register_login_and_select_org(
+        client, "correction-owner@example.com", "correction-org"
+    )
+    await _activate_hr(db_session, session["org_id"])
+    headers = _auth(session["token"])
+
+    _job, candidate = await _seed_hr_review_candidate(
+        db_session, session["org_id"], session["user_id"]
+    )
+
+    patch_resp = await client.patch(
+        f"/api/v1/hr/candidates/{candidate.id}",
+        json={"fullName": "Jane A. Doe", "email": "jane.doe@example.com"},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+    assert patch_resp.json()["fullName"] == "Jane A. Doe"
+    assert patch_resp.json()["email"] == "jane.doe@example.com"
+
+    audit_result = await db_session.execute(
+        select(AuditEvent).where(AuditEvent.resource_id == candidate.id)
+    )
+    audit_rows = audit_result.scalars().all()
+    assert any(e.action == "CANDIDATE_IDENTITY_CORRECTED" for e in audit_rows)
+
+    # A no-op patch (nothing actually changed) must not add a second audit event.
+    noop_resp = await client.patch(
+        f"/api/v1/hr/candidates/{candidate.id}",
+        json={"fullName": "Jane A. Doe"},
+        headers=headers,
+    )
+    assert noop_resp.status_code == 200
+    audit_result_after = await db_session.execute(
+        select(AuditEvent).where(AuditEvent.resource_id == candidate.id)
+    )
+    assert len(audit_result_after.scalars().all()) == len(audit_rows)
+
+
 async def test_hr_data_is_isolated_per_tenant(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:

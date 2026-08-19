@@ -1,5 +1,6 @@
 """OpenAI embeddings adapter — same REST-over-httpx posture as
-openai_llm_provider.py. Untested against a live account (ADR 0001 pattern).
+openai_llm_provider.py, including raising a clear configuration error
+rather than substituting a dummy key that would just fail later anyway.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.shared.ai_providers.embedding import EmbeddingProvider
+from app.shared.ai_providers.openai_llm_provider import OpenAIConfigurationError
 
 _OPENAI_API_BASE = "https://api.openai.com/v1"
 
@@ -17,7 +19,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self.settings = get_settings()
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        api_key = self.settings.openai_api_key.get_secret_value() or "sk-dummy-key"
+        api_key = self.settings.openai_api_key.get_secret_value()
+        if not api_key:
+            raise OpenAIConfigurationError(
+                "OPENAI_API_KEY is not configured — cannot call OpenAI."
+            )
+
         async with httpx.AsyncClient(base_url=_OPENAI_API_BASE, timeout=60.0) as client:
             response = await client.post(
                 "/embeddings",

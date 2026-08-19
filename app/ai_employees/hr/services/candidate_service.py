@@ -64,6 +64,44 @@ class CandidateService:
         )
         return candidate
 
+    async def update_identity(
+        self,
+        organization_id: str,
+        candidate_id: str,
+        *,
+        actor_id: str,
+        full_name: str | None,
+        email: str | None,
+        phone: str | None,
+    ) -> Candidate:
+        """HR correcting AI-extracted identity during review (spec: 'HR
+        Review / Correction') — every mutation here is audited since a
+        candidate's name/email is exactly the kind of consequential change
+        the Definition of Done requires evidence for.
+        """
+        candidate = await self.get_candidate(organization_id, candidate_id)
+        changed: dict[str, str] = {}
+        if full_name is not None and full_name != candidate.full_name:
+            changed["fullName"] = full_name
+            candidate.full_name = full_name
+        if email is not None and email != candidate.email:
+            changed["email"] = email
+            candidate.email = email
+        if phone is not None and phone != candidate.phone:
+            changed["phone"] = phone
+            candidate.phone = phone
+
+        if changed:
+            await self.audit.record(
+                organization_id=organization_id,
+                actor_id=actor_id,
+                actor_type=ActorType.USER,
+                action="CANDIDATE_IDENTITY_CORRECTED",
+                resource_type="CANDIDATE",
+                resource_id=candidate_id,
+            )
+        return candidate
+
     async def approve_for_screening(
         self, organization_id: str, candidate_id: str, *, actor_id: str
     ) -> Candidate:
