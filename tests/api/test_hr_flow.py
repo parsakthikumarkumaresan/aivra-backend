@@ -24,6 +24,7 @@ from app.ai_employees.hr.models.candidate import (
     CandidateStage,
 )
 from app.ai_employees.hr.models.job import EmploymentType, HrJob, JobStatus
+from app.ai_employees.hr.models.screening import Screening, ScreeningStatus
 from app.ai_employees.provisioning.models.provision import EmployeeProvision, ProvisionStatus
 from app.ai_employees.registry.models.catalog import (
     AIEmployeeType,
@@ -93,9 +94,10 @@ async def _seed_identity(
     *,
     full_name: str = "Jane Doe",
     email: str = "jane@example.com",
+    phone: str | None = "+15550100",
 ) -> CandidateIdentity:
     identity = CandidateIdentity(
-        organization_id=organization_id, full_name=full_name, email=email
+        organization_id=organization_id, full_name=full_name, email=email, phone=phone
     )
     db_session.add(identity)
     await db_session.flush()
@@ -182,12 +184,33 @@ async def test_candidate_approval_screening_and_scheduling_flow(
     audit_rows = audit_result.scalars().all()
     assert any(e.action == "CANDIDATE_APPROVED_FOR_SCREENING" for e in audit_rows)
 
-    # Screening call lifecycle.
+    # Screening call lifecycle. Prompt generation goes through a real LLM
+    # call (see tests/workflows/test_screening_prompt_pipeline.py for that,
+    # with a FakeLLMProvider) — here the prompt is seeded directly so this
+    # test stays focused on the approval/scheduling API surface, matching
+    # this file's stated scope.
+    db_session.add(
+        Screening(
+            organization_id=session["org_id"],
+            candidate_id=candidate.id,
+            status=ScreeningStatus.PENDING,
+            prompt_text="## Candidate\nName: Jane Doe\nRole: Backend Engineer\n...",
+        )
+    )
+    await db_session.flush()
+
     start_resp = await client.post(
         f"/api/v1/hr/screenings/candidates/{candidate.id}/start", headers=headers
     )
-    assert start_resp.status_code == 201
+    assert start_resp.status_code == 201, start_resp.text
     assert start_resp.json()["status"] == "in_progress"
+
+    # Idempotency: a second Start Screening while one is already in progress
+    # must not place a duplicate call.
+    duplicate_start_resp = await client.post(
+        f"/api/v1/hr/screenings/candidates/{candidate.id}/start", headers=headers
+    )
+    assert duplicate_start_resp.status_code == 409
 
     complete_resp = await client.post(
         f"/api/v1/hr/screenings/candidates/{candidate.id}/complete",
@@ -197,12 +220,12 @@ async def test_candidate_approval_screening_and_scheduling_flow(
     assert complete_resp.status_code == 200
     assert complete_resp.json()["status"] == "completed"
 
-    # Human review gate would normally move HUMAN_REVIEW -> INTERVIEW_PENDING;
-    # simulate reviewer sign-off directly since that's a manual HR action with
-    # no dedicated endpoint beyond approve-for-interview itself.
+    # Completing a screening advances the candidate straight through to
+    # HUMAN_REVIEW (see ScreeningService.complete_screening) — no separate
+    # manual "submit for review" step exists, so Gate 2 is reachable here.
     candidate_row = await db_session.get(Candidate, candidate.id)
     assert candidate_row is not None
-    candidate_row.stage = CandidateStage.HUMAN_REVIEW
+    assert candidate_row.stage == CandidateStage.HUMAN_REVIEW
 
     approve_interview_resp = await client.post(
         f"/api/v1/hr/candidates/{candidate.id}/approve-for-interview",
@@ -217,13 +240,10 @@ async def test_candidate_approval_screening_and_scheduling_flow(
     )
     assert interview_resp.status_code == 200
     interview_id = interview_resp.json()["id"]
-    assert interview_resp.json()["status"] == "pending_approval"
-
-    approve_resp = await client.post(
-        f"/api/v1/hr/interviews/{interview_id}/approve", headers=headers
-    )
-    assert approve_resp.status_code == 200
-    assert approve_resp.json()["status"] == "approved"
+    # approve-for-interview above is the one real-world human decision —
+    # it promotes the Interview straight to "approved" so there's no
+    # separate, UI-unreachable second gate blocking book_slot.
+    assert interview_resp.json()["status"] == "approved"
 
     start_time = datetime.now(UTC) + timedelta(days=1)
     slot_resp = await client.post(

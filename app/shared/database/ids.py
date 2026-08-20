@@ -46,6 +46,7 @@ class IdPrefix:
     ASSESSMENT = "assess"
     SCREENING = "screen"
     INTERVIEW = "interview"
+    INTERVIEW_PANELIST = "panelist"
     SCHEDULE_SLOT = "slot"
     VOICE_AGENT = "vagent"
     AGENT_VERSION = "aver"

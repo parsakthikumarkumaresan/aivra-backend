@@ -32,6 +32,29 @@ from app.ai_employees.hr.repositories.candidate_repository import CandidateRepos
 
 _EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
+# A bare 10-digit Indian mobile number (as resumes almost always list it,
+# with no country code) is by far the dominant local-format case for this
+# product's candidates. Rather than surfacing an E.164-format error to HR
+# for something this common and unambiguous, silently normalize it the same
+# way a person dialing it locally in India would — leave anything else
+# (already has a '+', wrong digit count, landline, etc.) untouched for
+# downstream validation to catch instead of guessing further.
+_INDIA_MOBILE_PATTERN = re.compile(r"^[6-9]\d{9}$")
+
+
+def normalize_phone_number(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("+"):
+        return stripped
+    digits_only = re.sub(r"\D", "", stripped)
+    if _INDIA_MOBILE_PATTERN.match(digits_only):
+        return f"+91{digits_only}"
+    return stripped
+
 
 def identity_issues(*, full_name: str, email: str) -> list[str]:
     issues: list[str] = []
@@ -65,7 +88,7 @@ async def get_or_create_identity(
             organization_id=organization_id,
             full_name=full_name.strip(),
             email=email.strip(),
-            phone=phone,
+            phone=normalize_phone_number(phone),
         )
     )
     return identity, True
@@ -89,6 +112,14 @@ async def get_or_create_candidate(
     """
     existing = await candidate_repo.find_by_job_and_identity(organization_id, job_id, identity_id)
     if existing is not None:
+        if existing.archived_at is not None:
+            # HR archived this application, then a new resume for the same
+            # person+job came in — that's an explicit signal they should be
+            # active again. Without this, the pipeline "succeeds" but the
+            # candidate stays invisible in the default active pipeline view
+            # (list_filtered's default excludes archived_at IS NOT NULL).
+            existing.archived_at = None
+            existing.archived_by_user_id = None
         return existing, False
 
     candidate = await candidate_repo.add(

@@ -96,6 +96,17 @@ def _build_candidate_transitions() -> dict[CandidateStage, frozenset[CandidateSt
     # Explicit human "Reconsider / Reopen" action (never automatic — see
     # CandidateService.reconsider) is the only way out of REJECTED.
     transitions[CandidateStage.REJECTED] = {CandidateStage.HR_REVIEW}
+    # A completed screening can conclude with the candidate simply having
+    # been unavailable to talk (spec: not a technical failure) — HR must be
+    # able to start a new screening call for the same application rather
+    # than being stuck with no path back to SCREENING.
+    transitions[CandidateStage.SCREENED].add(CandidateStage.SCREENING)
+    # A completed screening advances straight through to HUMAN_REVIEW (see
+    # ScreeningService.complete_screening/generate_result — there is no
+    # separate manual "submit for review" action), so "Call Again" must
+    # still be able to re-open a new screening call from there too, not
+    # just from the fleeting SCREENED state it passes through.
+    transitions[CandidateStage.HUMAN_REVIEW].add(CandidateStage.SCREENING)
     transitions[CandidateStage.COMPLETED] = set()
     transitions[CandidateStage.WITHDRAWN] = set()
 

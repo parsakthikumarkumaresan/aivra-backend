@@ -10,6 +10,8 @@ from app.shared.schemas.base import CamelModel
 class JobResponse(CamelModel):
     id: str
     title: str
+    company_name: str | None
+    ai_agent_name: str | None
     department: str | None
     description: str | None
     requirements: list[str]
@@ -25,6 +27,8 @@ class JobResponse(CamelModel):
 
 class CreateJobRequest(CamelModel):
     title: str = Field(min_length=1, max_length=255)
+    company_name: str | None = None
+    ai_agent_name: str | None = None
     department: str | None = None
     description: str | None = None
     requirements: list[str] = Field(default_factory=list)

@@ -107,6 +107,23 @@ class Settings(BaseSettings):
     livekit_api_key: SecretStr = Field(default=SecretStr(""))
     livekit_api_secret: SecretStr = Field(default=SecretStr(""))
 
+    # --- HR AI voice screening runtime (LiveKit + SIP) — independently
+    # scoped from Voice's livekit_*/voice_* settings above (spec: HR/Voice
+    # bounded-context isolation). Same physical LiveKit/SIP account may be
+    # reused; the settings fields themselves must never be shared, so a
+    # future change to Voice's configuration can never affect HR screening.
+    hr_livekit_url: str = ""
+    hr_livekit_api_key: SecretStr = Field(default=SecretStr(""))
+    hr_livekit_api_secret: SecretStr = Field(default=SecretStr(""))
+    hr_sip_trunk_id: str = ""
+    hr_screening_phone_number: str = ""
+    hr_screening_agent_name: str = "aivra-hr-screening"
+    # HR-configurable AI persona/display name spoken on calls — never
+    # hardcoded (spec section 8).
+    hr_screening_persona_name: str = "AIVRA Screening Assistant"
+    hr_screening_realtime_model: str = "gpt-realtime"
+    hr_screening_voice: str = "marin"
+
     # --- Telephony ---
     telephony_provider: str = "twilio"
     twilio_account_sid: SecretStr = Field(default=SecretStr(""))

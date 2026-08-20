@@ -14,6 +14,9 @@ from app.ai_employees.hr.repositories.candidate_repository import (
     CandidateVisibility,
 )
 from app.ai_employees.hr.repositories.integration_repository import IntegrationRepository
+from app.ai_employees.hr.repositories.interview_panelist_repository import (
+    InterviewPanelistRepository,
+)
 from app.ai_employees.hr.repositories.interview_repository import InterviewRepository
 from app.ai_employees.hr.repositories.schedule_slot_repository import ScheduleSlotRepository
 from app.ai_employees.hr.schemas.candidate import (
@@ -29,6 +32,7 @@ from app.audit.repositories.audit_repository import AuditRepository
 from app.audit.services.audit_service import AuditService
 from app.shared.database.session import get_db
 from app.shared.errors.exceptions import NotFoundError
+from app.shared.notifications.factory import get_email_sender
 from app.shared.rbac.roles import HR_OPERATOR_ROLES
 from app.shared.security.dependencies import AuthContext
 
@@ -53,6 +57,8 @@ def _scheduling_service(db: AsyncSession = Depends(get_db)) -> SchedulingService
         CandidateIdentityRepository(db),
         IntegrationRepository(db),
         get_calendar_provider(),
+        InterviewPanelistRepository(db),
+        get_email_sender(),
     )
 
 

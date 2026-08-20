@@ -29,6 +29,11 @@ class HrJob(Base, OrgScopedMixin):
         String(40), primary_key=True, default=lambda: new_id(IdPrefix.HR_JOB)
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    # Per-job override for the AI screening agent's spoken display name
+    # (e.g. "Zara") — falls back to settings.hr_screening_persona_name when
+    # unset (see screening_prompt_pipeline.py), same pattern as company_name.
+    ai_agent_name: Mapped[str | None] = mapped_column(String(120))
     department: Mapped[str | None] = mapped_column(String(120))
     description: Mapped[str | None] = mapped_column(Text)
     # Structured requirement strings — the JD-matching rubric scores candidates

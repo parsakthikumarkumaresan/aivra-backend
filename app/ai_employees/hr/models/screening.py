@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database.base import Base, OrgScopedMixin
@@ -43,3 +43,24 @@ class Screening(Base, OrgScopedMixin):
     result_summary: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # --- AI screening prompt (spec section 2-4: auto-generated, HR-editable, never blank) ---
+    prompt_text: Mapped[str | None] = mapped_column(Text)
+    prompt_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prompt_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prompt_edited_by_user_id: Mapped[str | None] = mapped_column(String(40))
+    # Append-only list of {prompt_text, edited_at, edited_by_user_id, source} —
+    # auditability for prompt edits without a separate history table (spec section 4).
+    prompt_history: Mapped[list | None] = mapped_column(JSON)
+
+    # --- LiveKit/SIP call plumbing (internal — never exposed in the public API response) ---
+    livekit_room_name: Mapped[str | None] = mapped_column(String(120))
+    livekit_dispatch_id: Mapped[str | None] = mapped_column(String(120))
+    sip_call_participant_identity: Mapped[str | None] = mapped_column(String(120))
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+
+    # --- Conversation + structured result (spec sections 12, 14) ---
+    # List of {speaker, text, is_final, timestamp} turns, appended live during the call.
+    transcript: Mapped[list | None] = mapped_column(JSON)
+    # ScreeningResult schema (app/ai_employees/hr/schemas/screening_result.py) as JSON.
+    result: Mapped[dict | None] = mapped_column(JSON)

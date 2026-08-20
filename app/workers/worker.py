@@ -45,7 +45,11 @@ def main() -> None:
     worker_class = SimpleWorker if sys.platform == "win32" else Worker
     worker = worker_class(QUEUES, connection=connection)
     logger.info("worker_starting", queues=QUEUES, worker_class=worker_class.__name__)
-    worker.work()
+    # with_scheduler=True: required for Queue.enqueue_in/enqueue_at delayed
+    # jobs to actually fire (e.g. the screening-call-stall watchdog in
+    # app.workers.jobs.hr_screening_jobs) — without it, scheduled jobs sit in
+    # RQ's scheduled-job registry forever and never get moved to the queue.
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":

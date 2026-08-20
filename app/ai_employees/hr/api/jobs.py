@@ -24,6 +24,8 @@ def _to_response(job: HrJob, candidate_count: int) -> JobResponse:
     return JobResponse(
         id=job.id,
         title=job.title,
+        company_name=job.company_name,
+        ai_agent_name=job.ai_agent_name,
         department=job.department,
         description=job.description,
         requirements=job.requirements,
@@ -63,6 +65,8 @@ async def create_job(
         organization_id=auth.require_organization_id(),
         created_by_user_id=auth.user.id,
         title=payload.title,
+        company_name=payload.company_name,
+        ai_agent_name=payload.ai_agent_name,
         department=payload.department,
         description=payload.description,
         requirements=payload.requirements,

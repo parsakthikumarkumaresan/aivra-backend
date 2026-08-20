@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database.base import Base, OrgScopedMixin
@@ -59,3 +60,6 @@ class Interview(Base, OrgScopedMixin):
     meeting_link: Mapped[str | None] = mapped_column(String(500))
     interviewer_user_id: Mapped[str | None] = mapped_column(String(40))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Set only on an actual successful send — never faked (spec section 19,
+    # 21). Panelist notification status lives per-row on InterviewPanelist.
+    candidate_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
