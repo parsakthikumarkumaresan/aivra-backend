@@ -34,6 +34,8 @@ from app.ai_employees.hr.repositories.interview_panelist_repository import (
 )
 from app.ai_employees.hr.repositories.interview_repository import InterviewRepository
 from app.ai_employees.hr.repositories.schedule_slot_repository import ScheduleSlotRepository
+from app.audit.models.audit_event import ActorType
+from app.audit.services.audit_service import AuditService
 from app.shared.errors.exceptions import ConflictError, NotFoundError
 from app.shared.notifications.email_sender import EmailSender
 
@@ -49,6 +51,7 @@ class SchedulingService:
         calendar_provider: CalendarProvider,
         panelist_repo: InterviewPanelistRepository,
         email_sender: EmailSender,
+        audit: AuditService | None = None,
     ) -> None:
         self.interview_repo = interview_repo
         self.slot_repo = slot_repo
@@ -58,6 +61,7 @@ class SchedulingService:
         self.calendar_provider = calendar_provider
         self.panelist_repo = panelist_repo
         self.email_sender = email_sender
+        self.audit = audit
 
     async def request_interview(self, organization_id: str, candidate_id: str) -> Interview:
         """Called from the candidate-level "Approve for Human Interview" Gate
@@ -68,15 +72,20 @@ class SchedulingService:
         than leaving it stuck at PENDING_APPROVAL with no way to reach the
         state book_slot requires.
         """
-        interview = await self.interview_repo.add(
-            Interview(
-                organization_id=organization_id,
-                candidate_id=candidate_id,
-                status=InterviewStatus.PENDING_APPROVAL,
+        interview = await self.interview_repo.get_for_candidate(organization_id, candidate_id)
+        if interview is None:
+            interview = await self.interview_repo.add(
+                Interview(
+                    organization_id=organization_id,
+                    candidate_id=candidate_id,
+                    status=InterviewStatus.PENDING_APPROVAL,
+                )
             )
-        )
-        INTERVIEW_TRANSITIONS.assert_transition_allowed(interview.status, InterviewStatus.APPROVED)
-        interview.status = InterviewStatus.APPROVED
+        if interview.status != InterviewStatus.APPROVED:
+            INTERVIEW_TRANSITIONS.assert_transition_allowed(
+                interview.status, InterviewStatus.APPROVED
+            )
+            interview.status = InterviewStatus.APPROVED
         return interview
 
     async def approve_interview(self, organization_id: str, interview_id: str) -> Interview:
@@ -177,8 +186,104 @@ class SchedulingService:
             panelist_emails=panelist_emails,
         )
         now = datetime.now(UTC)
+        if self.audit:
+            await self.audit.record(
+                organization_id=organization_id,
+                actor_id=interview.interviewer_user_id or "SYSTEM",
+                actor_type=ActorType.USER,
+                action="INTERVIEW_SCHEDULED",
+                resource_type="INTERVIEW",
+                resource_id=interview.id,
+            )
+
         if results.get(identity.email):
             interview.candidate_notified_at = now
+            if self.audit:
+                await self.audit.record(
+                    organization_id=organization_id,
+                    actor_id=interview.interviewer_user_id or "SYSTEM",
+                    actor_type=ActorType.USER,
+                    action="INTERVIEW_INVITATION_SENT",
+                    resource_type="INTERVIEW",
+                    resource_id=interview.id,
+                )
+        elif self.audit:
+            await self.audit.record(
+                organization_id=organization_id,
+                actor_id=interview.interviewer_user_id or "SYSTEM",
+                actor_type=ActorType.USER,
+                action="INTERVIEW_INVITATION_FAILED",
+                resource_type="INTERVIEW",
+                resource_id=interview.id,
+            )
+
+        for panelist in panelists:
+            if results.get(panelist.email):
+                panelist.notified_at = now
+
+        return interview
+
+    async def resend_invitations(
+        self,
+        organization_id: str,
+        interview_id: str,
+        *,
+        job_title: str = "Interview",
+        company_name: str | None = None,
+    ) -> Interview:
+        """Retries sending email invitations for an already-scheduled interview
+        without creating duplicate calendar slots or modifying booking status.
+        """
+        interview = await self._require_interview(organization_id, interview_id)
+        if interview.status != InterviewStatus.SCHEDULED:
+            raise ConflictError("Can only resend invitations for scheduled interviews.")
+
+        candidate = await self.candidate_repo.get_by_id(organization_id, interview.candidate_id)
+        if candidate is None:
+            raise NotFoundError("Candidate not found.")
+        identity = await self.identity_repo.get_by_id(organization_id, candidate.identity_id)
+        if identity is None:
+            raise NotFoundError("Candidate identity not found.")
+
+        slot = None
+        if interview.scheduled_slot_id:
+            slot = await self.slot_repo.get_by_id(organization_id, interview.scheduled_slot_id)
+
+        start_time_display = slot.start_time.isoformat() if slot else datetime.now(UTC).isoformat()
+        panelists = await self.panelist_repo.list_for_interview(organization_id, interview.id)
+        panelist_emails = [p.email for p in panelists]
+
+        results = await send_interview_invitations(
+            self.email_sender,
+            job_title=job_title,
+            company_name=company_name,
+            start_time_display=start_time_display,
+            meeting_link=interview.meeting_link,
+            candidate_email=identity.email,
+            panelist_emails=panelist_emails,
+        )
+        now = datetime.now(UTC)
+        if results.get(identity.email):
+            interview.candidate_notified_at = now
+            if self.audit:
+                await self.audit.record(
+                    organization_id=organization_id,
+                    actor_id=interview.interviewer_user_id or "SYSTEM",
+                    actor_type=ActorType.USER,
+                    action="INTERVIEW_INVITATION_SENT",
+                    resource_type="INTERVIEW",
+                    resource_id=interview.id,
+                )
+        elif self.audit:
+            await self.audit.record(
+                organization_id=organization_id,
+                actor_id=interview.interviewer_user_id or "SYSTEM",
+                actor_type=ActorType.USER,
+                action="INTERVIEW_INVITATION_FAILED",
+                resource_type="INTERVIEW",
+                resource_id=interview.id,
+            )
+
         for panelist in panelists:
             if results.get(panelist.email):
                 panelist.notified_at = now

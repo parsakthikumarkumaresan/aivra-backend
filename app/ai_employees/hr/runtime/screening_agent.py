@@ -24,12 +24,13 @@ import json
 from datetime import UTC, datetime
 
 from livekit import agents
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions
+from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, WorkerOptions
 from livekit.agents.voice.events import (
     CloseEvent,
     ConversationItemAddedEvent,
     UserInputTranscribedEvent,
 )
+from livekit.plugins import noise_cancellation
 from livekit.plugins.openai.realtime import RealtimeModel
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -276,7 +277,19 @@ async def entrypoint(ctx: JobContext) -> None:
         agent_session.on("close", _on_close)
 
         try:
-            await agent_session.start(agent, room=ctx.room)
+            await agent_session.start(
+                agent,
+                room=ctx.room,
+                # Agent-side noise cancellation (LiveKit's recommended
+                # placement over SIP-trunk-side NC — it unlocks the enhanced
+                # Krisp models). BVCTelephony is the narrowband (8kHz) model
+                # tuned for phone-call audio, matching this SIP participant's
+                # source, rather than BVC which targets full-band WebRTC mic
+                # audio: https://docs.livekit.io/transport/media/noise-cancellation/
+                room_input_options=RoomInputOptions(
+                    noise_cancellation=noise_cancellation.BVCTelephony()
+                ),
+            )
         except Exception as exc:
             logger.exception("AGENT_REALTIME_FAILED", screening_id=screening_id)
             await _finalize_screening(

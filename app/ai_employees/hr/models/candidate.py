@@ -106,7 +106,10 @@ def _build_candidate_transitions() -> dict[CandidateStage, frozenset[CandidateSt
     # separate manual "submit for review" action), so "Call Again" must
     # still be able to re-open a new screening call from there too, not
     # just from the fleeting SCREENED state it passes through.
-    transitions[CandidateStage.HUMAN_REVIEW].add(CandidateStage.SCREENING)
+    # HR can skip AI screening and directly approve the candidate for an interview
+    # from HR_REVIEW or SCREENING_APPROVED (Path 2: HR Direct Interview path).
+    transitions[CandidateStage.HR_REVIEW].add(CandidateStage.INTERVIEW_PENDING)
+    transitions[CandidateStage.SCREENING_APPROVED].add(CandidateStage.INTERVIEW_PENDING)
     transitions[CandidateStage.COMPLETED] = set()
     transitions[CandidateStage.WITHDRAWN] = set()
 

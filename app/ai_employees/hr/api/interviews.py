@@ -27,6 +27,8 @@ from app.ai_employees.hr.schemas.interview import (
     ScheduleSlotResponse,
 )
 from app.ai_employees.hr.services.scheduling_service import SchedulingService
+from app.audit.repositories.audit_repository import AuditRepository
+from app.audit.services.audit_service import AuditService
 from app.shared.database.session import get_db
 from app.shared.errors.exceptions import NotFoundError
 from app.shared.notifications.factory import get_email_sender
@@ -46,6 +48,7 @@ def _service(db: AsyncSession = Depends(get_db)) -> SchedulingService:
         get_calendar_provider(),
         InterviewPanelistRepository(db),
         get_email_sender(),
+        AuditService(AuditRepository(db)),
     )
 
 
@@ -207,3 +210,37 @@ async def book_slot(
         panelist_emails=payload.panelist_emails,
     )
     return await _to_interview_response(interview, panelist_repo, organization_id, slot_repo)
+
+
+@router.post("/interviews/{interview_id}/resend-invitations", response_model=InterviewResponse)
+async def resend_invitations(
+    interview_id: str,
+    auth: AuthContext = Depends(require_hr_role(*HR_OPERATOR_ROLES)),
+    service: SchedulingService = Depends(_service),
+    job_repo: JobRepository = Depends(_job_repo),
+    panelist_repo: InterviewPanelistRepository = Depends(_panelist_repo),
+    slot_repo: ScheduleSlotRepository = Depends(_slot_repo),
+) -> InterviewResponse:
+    organization_id = auth.require_organization_id()
+    interview = await service.interview_repo.get_by_id(organization_id, interview_id)
+    if interview is None:
+        raise NotFoundError("Interview not found.")
+
+    job_title = "Interview"
+    company_name = None
+    candidate = await service.candidate_repo.get_by_id(organization_id, interview.candidate_id)
+    if candidate is not None:
+        job = await job_repo.get_by_id(organization_id, candidate.job_id)
+        if job is not None:
+            job_title = job.title
+            company_name = job.company_name
+
+    updated_interview = await service.resend_invitations(
+        organization_id,
+        interview_id,
+        job_title=job_title,
+        company_name=company_name,
+    )
+    return await _to_interview_response(
+        updated_interview, panelist_repo, organization_id, slot_repo
+    )

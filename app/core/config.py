@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     hr_screening_agent_name: str = "aivra-hr-screening"
     # HR-configurable AI persona/display name spoken on calls — never
     # hardcoded (spec section 8).
-    hr_screening_persona_name: str = "AIVRA Screening Assistant"
+    hr_screening_persona_name: str = "Aivra Hr"
     hr_screening_realtime_model: str = "gpt-realtime"
     hr_screening_voice: str = "marin"
 
