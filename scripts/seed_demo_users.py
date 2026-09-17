@@ -211,7 +211,7 @@ async def seed_demo_users():
         await session.commit()
         print("\nSEED COMPLETE. Login with any of:")
         for spec in USERS:
-            print(f"  {spec['email']}  /  {PASSWORD}")
+            print(f"  {spec['email']}  /  {spec.get('password', PASSWORD)}")
 
 
 if __name__ == "__main__":

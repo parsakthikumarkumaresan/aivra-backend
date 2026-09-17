@@ -19,6 +19,7 @@ assumed from docs, for every symbol that file also uses.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from livekit import agents
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, WorkerOptions
@@ -117,20 +118,41 @@ def _log_background_task_failure(task: asyncio.Task, *, call_id: str) -> None:
         )
 
 
+# Maps LiveKit's real CloseReason enum (livekit.agents.voice.events) to a
+# stable, human-readable end_reason string. "voicemail" is deliberately
+# absent — nothing in the current runtime detects voicemail, so it must
+# never be set here (see Call.end_reason's docstring).
+_CLOSE_REASON_TO_END_REASON = {
+    "participant_disconnected": "customer_end",
+    "user_initiated": "agent_end",
+    "task_completed": "completed",
+    "job_shutdown": "system_shutdown",
+    "error": "error",
+}
+
+
 async def _finalize_call(
-    session_factory: SessionFactory, organization_id: str, call_id: str, *, failed: bool
+    session_factory: SessionFactory,
+    organization_id: str,
+    call_id: str,
+    *,
+    failed: bool,
+    end_reason: str | None = None,
 ) -> None:
     async with session_factory() as session:
         await _call_service(session).end_call(
-            organization_id, call_id, status=CallStatus.FAILED if failed else CallStatus.COMPLETED
+            organization_id,
+            call_id,
+            status=CallStatus.FAILED if failed else CallStatus.COMPLETED,
+            end_reason=end_reason,
         )
         await session.commit()
     if not failed:
         enqueue_post_call_analysis(organization_id, call_id)
-    logger.info("VOICE_CALL_ENDED", call_id=call_id, failed=failed)
+    logger.info("VOICE_CALL_ENDED", call_id=call_id, failed=failed, end_reason=end_reason)
 
 
-def _build_ambient_audio_player(voice_config: dict) -> object | None:
+def _build_ambient_audio_player(voice_config: dict) -> Any | None:
     """Constructs a real livekit.agents BackgroundAudioPlayer from
     voice_config.backgroundSoundId/backgroundSoundVolume, or returns None
     if ambient sound is off/unconfigured. Import is deferred and
@@ -209,7 +231,7 @@ def _build_session(
     vad = silero.VAD.load()
 
     turn_mode = normalize_turn_mode(transcription_config.get("turnMode", "Heuristic"))
-    turn_detection: object = "vad"
+    turn_detection: Any = "vad"
     min_endpointing_delay = 0.5
     if turn_mode == "semantic":
         try:
@@ -265,7 +287,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
         if agent_version is None:
             logger.error("AGENT_VERSION_NOT_FOUND", call_id=call_id)
-            await _finalize_call(session_factory, organization_id, call_id, failed=True)
+            await _finalize_call(
+                session_factory, organization_id, call_id, failed=True, end_reason="config_error"
+            )
             return
 
         system_prompt = agent_version.prompt_config.get(
@@ -301,7 +325,9 @@ async def entrypoint(ctx: JobContext) -> None:
             )
         except Exception:
             logger.exception("VOICE_SESSION_BUILD_FAILED", call_id=call_id)
-            await _finalize_call(session_factory, organization_id, call_id, failed=True)
+            await _finalize_call(
+                session_factory, organization_id, call_id, failed=True, end_reason="config_error"
+            )
             return
 
         agent = Agent(instructions=system_prompt)
@@ -316,16 +342,24 @@ async def entrypoint(ctx: JobContext) -> None:
             )
 
         def _on_conversation_item(event: ConversationItemAddedEvent) -> None:
+            # Only record assistant-originated items here. User speech is
+            # already fully handled by _on_user_transcribed below (which
+            # persists final transcripts under speaker="customer") — this
+            # handler used to record every conversation item regardless of
+            # role, which double-recorded every user turn a second time
+            # under whatever raw role LiveKit reported (typically "user"),
+            # confirmed against real transcript rows in the dev database.
             text = getattr(event.item, "text_content", None)
             role = getattr(event.item, "role", None)
-            if text:
+            if text and role == "assistant":
+                logger.info("AGENT_RESPONSE_ITEM", role=str(role), text=text)
                 _track(
                     asyncio.create_task(
                         _append_transcript_turn(
                             session_factory,
                             organization_id,
                             call_id,
-                            speaker=str(role or "agent"),
+                            speaker="assistant",
                             text=text,
                         )
                     )
@@ -333,6 +367,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
         def _on_user_transcribed(event: UserInputTranscribedEvent) -> None:
             if event.transcript and event.is_final:
+                logger.info("USER_SPEECH_TRANSCRIBED", text=event.transcript)
                 _track(
                     asyncio.create_task(
                         _append_transcript_turn(
@@ -361,14 +396,21 @@ async def entrypoint(ctx: JobContext) -> None:
             # identical comment in screening_agent.py) — the real
             # end-of-call signal is the session's own "close" event, waited
             # on below.
+            try:
+                nc = noise_cancellation.BVCTelephony()
+            except Exception:
+                nc = noise_cancellation.BVC()
+
             await agent_session.start(
                 agent,
                 room=ctx.room,
-                room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVC()),
+                room_input_options=RoomInputOptions(noise_cancellation=nc),
             )
         except Exception:
             logger.exception("VOICE_SESSION_START_FAILED", call_id=call_id)
-            await _finalize_call(session_factory, organization_id, call_id, failed=True)
+            await _finalize_call(
+                session_factory, organization_id, call_id, failed=True, end_reason="error"
+            )
             return
 
         background_audio = _build_ambient_audio_player(agent_version.voice_config)
@@ -378,19 +420,43 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception:
                 logger.exception("AMBIENT_SOUND_START_FAILED", call_id=call_id)
 
+        # Speak the agent's intro greeting immediately upon joining the call
+        intro_message = agent_version.prompt_config.get("introMessage")
+        if intro_message and intro_message.strip():
+            logger.info("VOICE_SPEAKING_INTRO", call_id=call_id, intro_message=intro_message)
+            try:
+                await agent_session.say(intro_message.strip(), allow_interruptions=True)
+            except Exception as e:
+                logger.warning("INTRO_MESSAGE_SAY_FAILED", error=str(e), call_id=call_id)
+        else:
+            try:
+                await agent_session.generate_reply()
+            except Exception as e:
+                logger.warning("INITIAL_REPLY_FAILED", error=str(e), call_id=call_id)
+
         logger.info("VOICE_CALL_ACTIVE", call_id=call_id, room_name=ctx.room.name)
         await closed.wait()
         if pending_writes:
             await asyncio.gather(*pending_writes, return_exceptions=True)
 
         close_event = close_event_holder.get("event")
-        failed = close_event is not None and close_event.reason.value == "error"
-        await _finalize_call(session_factory, organization_id, call_id, failed=failed)
+        raw_reason = close_event.reason.value if close_event is not None else None
+        failed = raw_reason == "error"
+        end_reason = _CLOSE_REASON_TO_END_REASON.get(raw_reason, raw_reason) if raw_reason else None
+        await _finalize_call(
+            session_factory, organization_id, call_id, failed=failed, end_reason=end_reason
+        )
     finally:
         await engine.dispose()
 
 
 def main() -> None:
+    # Uses Voice's own LIVEKIT_* settings only (never HR's hr_livekit_*) —
+    # the two AI Employees' LiveKit projects are deliberately kept
+    # independently configurable even when they happen to point at the
+    # same physical LiveKit Cloud project (set both to the same values in
+    # .env if you want that); see the identical decision in
+    # runtime/livekit_provider.py.
     settings = get_settings()
     agents.cli.run_app(
         WorkerOptions(

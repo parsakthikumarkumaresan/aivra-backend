@@ -87,7 +87,8 @@ async def livekit_webhook(
 
     # Process event type
     if event_name in ("room_finished", "participant_left"):
-        await call_service.end_call(call.organization_id, call.id)
+        end_reason = "customer_end" if event_name == "participant_left" else "room_closed"
+        await call_service.end_call(call.organization_id, call.id, end_reason=end_reason)
         # Enqueue post-call analysis background job
         enqueue_post_call_analysis(call.organization_id, call.id)
 

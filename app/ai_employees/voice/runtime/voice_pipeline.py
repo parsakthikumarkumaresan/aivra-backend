@@ -30,7 +30,15 @@ def build_stt(
     if provider == "openai":
         return openai.STT(model=model, api_key=settings.openai_api_key.get_secret_value())
     if provider == "elevenlabs":
-        return elevenlabs.STT(model=model, api_key=settings.elevenlabs_api_key.get_secret_value())
+        return elevenlabs.STT(
+            model=model,
+            api_key=settings.elevenlabs_api_key.get_secret_value(),
+            server_vad=elevenlabs.stt.VADOptions(
+                vad_silence_threshold_secs=0.8,
+                min_speech_duration_ms=200,
+                min_silence_duration_ms=500,
+            ),
+        )
     if provider == "sarvam":
         # "en-IN" matches sarvam.STT's own constructor default — verified
         # against the installed livekit-plugins-sarvam package rather than

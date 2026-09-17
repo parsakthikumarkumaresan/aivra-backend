@@ -80,3 +80,11 @@ class Call(Base, OrgScopedMixin):
     escalation_reason: Mapped[str | None] = mapped_column(Text)
     recording_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
+    # Real signal from the LiveKit runtime's CloseEvent.reason (see
+    # app.workers.voice_agent_worker._finalize_call) — never fabricated.
+    # NULL for calls recorded before this field existed, or for any call
+    # whose end reason genuinely couldn't be determined; analytics must
+    # surface that as "Unknown"/"Not enough data", never invent a value.
+    # "voicemail" is a reserved value for when answering-machine detection
+    # is implemented — nothing sets it yet.
+    end_reason: Mapped[str | None] = mapped_column(String(60), index=True)

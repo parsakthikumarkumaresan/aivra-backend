@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     livekit_api_key: SecretStr = Field(default=SecretStr(""))
     livekit_api_secret: SecretStr = Field(default=SecretStr(""))
 
+    # --- Voice outbound SIP dialing (real phone test-calls; independently
+    # scoped from HR's hr_sip_trunk_id/hr_screening_phone_number — same
+    # physical trunk/number may be reused by setting these to the same
+    # values, but the settings fields themselves stay separate). Left
+    # blank means outbound SIP dialing is unavailable — the API fails
+    # loudly with a clear configuration error rather than guessing a
+    # phone number.
+    voice_sip_trunk_id: str = ""
+    voice_outbound_caller_id: str = ""
+
     # --- HR AI voice screening runtime (LiveKit + SIP) — independently
     # scoped from Voice's livekit_*/voice_* settings above (spec: HR/Voice
     # bounded-context isolation). Same physical LiveKit/SIP account may be

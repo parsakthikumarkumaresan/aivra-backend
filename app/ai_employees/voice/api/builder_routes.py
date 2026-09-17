@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_employees.voice.api.dependencies import require_voice_internal_role
 from app.ai_employees.voice.models.agent_version import AgentVersion
+from app.ai_employees.voice.models.call import CallDirection
 from app.ai_employees.voice.models.voice_agent import VoiceAgent
 from app.ai_employees.voice.providers.catalog import build_catalog_response
 from app.ai_employees.voice.repositories.agent_version_repository import AgentVersionRepository
@@ -24,10 +25,13 @@ from app.ai_employees.voice.runtime.llm_provider import get_voice_llm_provider
 from app.ai_employees.voice.schemas.builder import (
     AgentVersionResponse,
     CreateVoiceAgentRequest,
+    OutboundNumberOption,
+    OutboundNumbersResponse,
     ReplayConversationResponse,
     ReplayTimelineEntry,
     ReplayToolCall,
     RollbackVoiceAgentRequest,
+    StartTestCallRequest,
     StartTestCallResponse,
     TestMessageRequest,
     TestTurnResultResponse,
@@ -194,6 +198,27 @@ async def list_voice_providers(
     return VoiceProviderCatalogResponse.model_validate(build_catalog_response())
 
 
+@router.get("/outbound-numbers", response_model=OutboundNumbersResponse)
+async def list_outbound_numbers(
+    auth: AuthContext = Depends(require_voice_internal_role()),
+) -> OutboundNumbersResponse:
+    """Real outbound caller ID(s) available for placing test calls —
+    currently just the single VOICE_OUTBOUND_CALLER_ID configured for this
+    deployment (a real number provisioned with your SIP trunk provider,
+    e.g. a trial number), never fabricated. Per-agent number assignment
+    isn't wired to a real backend yet, so every agent shares this one
+    organization-wide caller ID for now. Registered before GET /{agent_id}
+    so "outbound-numbers" is never swallowed as an agent_id path parameter.
+    """
+    settings = get_settings()
+    numbers: list[OutboundNumberOption] = []
+    if settings.voice_outbound_caller_id:
+        numbers.append(
+            OutboundNumberOption(number=settings.voice_outbound_caller_id, label="Trial number")
+        )
+    return OutboundNumbersResponse(numbers=numbers)
+
+
 @router.get("/{agent_id}", response_model=VoiceAgentResponse)
 async def get_voice_agent(
     agent_id: str,
@@ -358,15 +383,13 @@ async def resume_voice_agent(
 )
 async def start_test_call(
     agent_id: str,
+    req: StartTestCallRequest | None = None,
     auth: AuthContext = Depends(require_voice_internal_role()),
     db: AsyncSession = Depends(get_db),
 ) -> StartTestCallResponse:
     """Places a real LiveKit room + agent dispatch for this agent's
-    published configuration and returns a browser-joinable token, so the
-    real voice runtime (STT/TTS/Realtime, whichever the agent is
-    configured for) can be exercised end-to-end without needing full
-    inbound/outbound telephony wiring. This is the first real caller of
-    CallService.start_call().
+    published (or draft if use_draft=True) configuration and returns a browser-joinable token,
+    and optionally triggers outbound SIP dial if destination phone number is provided.
     """
     call_service = CallService(
         CallRepository(db),
@@ -378,10 +401,21 @@ async def start_test_call(
         get_voice_runtime_provider(),
     )
     org_id = auth.require_organization_id()
-    call, room_name, token = await call_service.start_call(
+    caller_number = req.user_number if req else None
+    agent_number = req.agent_number if req else None
+    use_draft = req.use_draft if req else False
+
+    call, room_name, token, sip_dial_error = await call_service.start_call(
         org_id,
         agent_id,
+        # A test call is always system/staff-initiated, never a customer
+        # calling in — was previously left at start_call's INBOUND default,
+        # mislabeling every test call in analytics' Inbound/Outbound split.
+        direction=CallDirection.OUTBOUND,
         caller_name="Test Caller",
+        caller_number=caller_number,
+        agent_number=agent_number,
+        use_draft=use_draft,
     )
 
     await AuditService(AuditRepository(db)).record(
@@ -393,11 +427,30 @@ async def start_test_call(
         resource_id=agent_id,
     )
 
+    settings = get_settings()
+    livekit_url = settings.livekit_url or settings.hr_livekit_url
+
+    # Honest dial_status: a destination number being *requested* is not the
+    # same as a real outbound call being *placed*. Only report "initiated"
+    # when CallService.start_call actually got back a real SIP participant
+    # (call.provider_call_id) — previously this was "initiated" any time a
+    # user_number was present in the request, regardless of whether the SIP
+    # dial succeeded, which showed a live "Dialing…" countdown to the
+    # tester even when no phone ever rang.
+    if not caller_number:
+        dial_status = "ready"
+    elif call.provider_call_id:
+        dial_status = "initiated"
+    else:
+        dial_status = "failed"
+
     return StartTestCallResponse(
         call_id=call.id,
         room_name=room_name,
         token=token,
-        livekit_url=get_settings().livekit_url,
+        livekit_url=livekit_url,
+        dial_status=dial_status,
+        dial_error=sip_dial_error if dial_status == "failed" else None,
     )
 
 

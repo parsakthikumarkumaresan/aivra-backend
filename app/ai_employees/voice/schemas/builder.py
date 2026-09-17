@@ -144,8 +144,34 @@ class VoiceProviderCatalogResponse(CamelModel):
     ambient_sounds: list[AmbientSoundOption]
 
 
+class OutboundNumberOption(CamelModel):
+    number: str
+    label: str
+
+
+class OutboundNumbersResponse(CamelModel):
+    numbers: list[OutboundNumberOption]
+
+
+class StartTestCallRequest(CamelModel):
+    user_number: str | None = None
+    agent_number: str | None = None
+    use_draft: bool = False
+    context_variables: dict[str, Any] | None = None
+    call_type: str = "phone"
+
+
 class StartTestCallResponse(CamelModel):
     call_id: str
     room_name: str
     token: str
     livekit_url: str
+    # "ready" — no destination number was requested (e.g. the Web tab).
+    # "initiated" — a real SIP participant was created for this call
+    #   (CallService.start_call's create_sip_participant returned a real
+    #   sip_call_id) — never inferred just from the request containing a
+    #   destination number.
+    # "failed" — a destination number was requested but the real SIP dial
+    #   did not succeed; see dial_error for why.
+    dial_status: str | None = None
+    dial_error: str | None = None

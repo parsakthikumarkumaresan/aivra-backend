@@ -52,3 +52,14 @@ class VoiceRuntimeProvider(ABC):
 
     @abstractmethod
     def verify_webhook(self, *, body: str, auth_header: str) -> RuntimeWebhookEvent: ...
+
+    async def create_sip_participant(
+        self,
+        *,
+        room_name: str,
+        phone_number: str,
+        caller_id: str | None = None,
+        sip_trunk_id: str | None = None,
+    ) -> str | None:
+        """Originate an outbound SIP participant dial into the room."""
+        return None

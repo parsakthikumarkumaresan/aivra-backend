@@ -8,6 +8,7 @@ as the Stripe/OpenAI/Google Calendar adapters (see ADR 0001).
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 
 from livekit import api as lk_api
@@ -18,17 +19,31 @@ from app.ai_employees.voice.runtime.base import (
     VoiceRuntimeProvider,
 )
 from app.core.config import get_settings
+from app.shared.errors.exceptions import ValidationAppError
+
+
+def _to_e164(phone_number: str) -> str:
+    digits_and_plus = re.sub(r"[^\d+]", "", phone_number.strip())
+    return digits_and_plus if digits_and_plus.startswith("+") else f"+{digits_and_plus}"
 
 
 class LiveKitRuntimeProvider(VoiceRuntimeProvider):
     def __init__(self) -> None:
         self.settings = get_settings()
 
+    def _credentials(self) -> tuple[str, str, str]:
+        return (
+            self.settings.livekit_url,
+            self.settings.livekit_api_key.get_secret_value(),
+            self.settings.livekit_api_secret.get_secret_value(),
+        )
+
     def _client(self) -> lk_api.LiveKitAPI:
+        url, key, secret = self._credentials()
         return lk_api.LiveKitAPI(
-            url=self.settings.livekit_url,
-            api_key=self.settings.livekit_api_key.get_secret_value(),
-            api_secret=self.settings.livekit_api_secret.get_secret_value(),
+            url=url,
+            api_key=key,
+            api_secret=secret,
         )
 
     async def create_room(self, *, room_name: str, metadata: str) -> RuntimeRoom:
@@ -48,10 +63,11 @@ class LiveKitRuntimeProvider(VoiceRuntimeProvider):
         ttl_seconds: int,
     ) -> str:
         grants = lk_api.VideoGrants(room_join=True, room=room_name, agent=True)
+        _, key, secret = self._credentials()
         token = (
             lk_api.AccessToken(
-                self.settings.livekit_api_key.get_secret_value(),
-                self.settings.livekit_api_secret.get_secret_value(),
+                key,
+                secret,
             )
             .with_identity(participant_identity)
             .with_name(participant_name)
@@ -60,6 +76,50 @@ class LiveKitRuntimeProvider(VoiceRuntimeProvider):
             .with_ttl(timedelta(seconds=ttl_seconds))
         )
         return token.to_jwt()
+
+    async def create_sip_participant(
+        self,
+        *,
+        room_name: str,
+        phone_number: str,
+        caller_id: str | None = None,
+        sip_trunk_id: str | None = None,
+    ) -> str | None:
+        """Originates a real outbound SIP dial into the room via a
+        configured trunk. Requires VOICE_SIP_TRUNK_ID and either an
+        explicit `caller_id` or VOICE_OUTBOUND_CALLER_ID — no hardcoded or
+        guessed phone number is ever used; if neither is configured this
+        raises a clear configuration error rather than dialing with a
+        fabricated caller ID.
+        """
+        trunk_id = sip_trunk_id or self.settings.voice_sip_trunk_id
+        if not trunk_id:
+            return None
+
+        clean_to_number = _to_e164(phone_number)
+        outbound_caller_id = caller_id or self.settings.voice_outbound_caller_id
+        if not outbound_caller_id:
+            raise ValidationAppError(
+                "No outbound caller ID configured for Voice SIP dialing — set "
+                "VOICE_OUTBOUND_CALLER_ID, or pass agentNumber explicitly, "
+                "before placing an outbound call."
+            )
+
+        async with self._client() as client:
+            sip_participant = await client.sip.create_sip_participant(
+                lk_api.CreateSIPParticipantRequest(
+                    sip_trunk_id=trunk_id,
+                    sip_call_to=clean_to_number,
+                    sip_number=outbound_caller_id,
+                    room_name=room_name,
+                    participant_identity=f"phone-{clean_to_number}",
+                    wait_until_answered=False,
+                    max_call_duration=timedelta(seconds=1800),  # type: ignore[arg-type]
+                )
+            )
+            return getattr(sip_participant, "sip_call_id", None) or getattr(
+                sip_participant, "participant_id", None
+            )
 
     async def dispatch_agent(self, *, room_name: str, agent_name: str, metadata: str) -> str:
         async with self._client() as client:
