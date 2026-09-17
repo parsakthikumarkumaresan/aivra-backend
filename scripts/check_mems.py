@@ -4,6 +4,7 @@ from app.shared.database.session import get_session_factory
 from app.identity.models.user import User
 from app.organizations.models.membership import OrganizationMember
 
+# pyrefly: ignore [unannotated-return]
 async def main():
     f = get_session_factory()
     async with f() as s:

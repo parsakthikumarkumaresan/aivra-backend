@@ -94,13 +94,27 @@ class Settings(BaseSettings):
     # a separate model for non-realtime Voice tasks (post-call analysis,
     # spec 15) which doesn't need the realtime API.
     voice_llm_model: str = "gpt-4o-mini"
-    voice_realtime_model: str = "gpt-4o-realtime-preview"
+    # gpt-realtime is the current production Realtime model (Aug 2025
+    # release) — gpt-4o-realtime-preview is the deprecated predecessor.
+    # Matches the model Jexa HR's screening runtime already uses in
+    # production (app.ai_employees.hr.runtime.screening_agent).
+    voice_realtime_model: str = "gpt-realtime"
 
     # --- STT / TTS (Voice-scoped; consumed only by the Voice runtime) ---
+    # Legacy fields, kept for backward compatibility with any existing
+    # config referencing them; the real, currently-wired providers for
+    # Jaan's custom STT/TTS mode are OpenAI, ElevenLabs and Sarvam (see
+    # app.ai_employees.voice.providers.catalog and
+    # app.ai_employees.voice.runtime.voice_pipeline).
     stt_provider: str = "deepgram"
     deepgram_api_key: SecretStr = Field(default=SecretStr(""))
     tts_provider: str = "cartesia"
     cartesia_api_key: SecretStr = Field(default=SecretStr(""))
+
+    # Real, wired custom-mode STT/TTS providers for Jaan (spec: real voice
+    # engine). OPENAI_API_KEY above is reused for OpenAI STT/TTS/Realtime.
+    elevenlabs_api_key: SecretStr = Field(default=SecretStr(""))
+    sarvam_api_key: SecretStr = Field(default=SecretStr(""))
 
     # --- Voice real-time runtime (ADR 0002: LiveKit) ---
     livekit_url: str = ""

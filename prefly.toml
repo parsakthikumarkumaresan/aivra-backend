@@ -1,0 +1,5 @@
+[project]
+venv = ".venv"[errors]
+unsupported-operation = false
+some-other-error = false
+another-error = false

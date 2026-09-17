@@ -102,3 +102,50 @@ class ReplayConversationResponse(CamelModel):
     tool_calls: list[ReplayToolCall]
     knowledge_retrieved: list[str]
     timeline: list[ReplayTimelineEntry]
+
+
+class RealtimeVoiceOption(CamelModel):
+    id: str
+    name: str
+    description: str | None = None
+
+
+class TtsVoiceOption(CamelModel):
+    id: str
+    name: str
+    language: str | None = None
+    gender: str | None = None
+    description: str | None = None
+
+
+class AmbientSoundOption(CamelModel):
+    id: str
+    name: str
+    clip: str
+
+
+class ProviderCatalogEntry(CamelModel):
+    id: str
+    name: str
+    capabilities: list[str]
+    realtime_models: list[str] = []
+    realtime_voices: list[RealtimeVoiceOption] = []
+    stt_models: list[str] = []
+    stt_modes: list[str] = []
+    tts_models: list[str] = []
+    tts_voices: list[TtsVoiceOption] = []
+    tts_voices_by_model: dict[str, list[TtsVoiceOption]] = {}
+    llm_models: list[str] = []
+
+
+class VoiceProviderCatalogResponse(CamelModel):
+    providers: list[ProviderCatalogEntry]
+    turn_detection_modes: list[str]
+    ambient_sounds: list[AmbientSoundOption]
+
+
+class StartTestCallResponse(CamelModel):
+    call_id: str
+    room_name: str
+    token: str
+    livekit_url: str

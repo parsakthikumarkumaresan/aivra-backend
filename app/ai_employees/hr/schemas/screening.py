@@ -37,3 +37,18 @@ class ScreeningPromptResponse(CamelModel):
 
 class UpdateScreeningPromptRequest(CamelModel):
     prompt_text: str
+
+
+class HrVoiceConfigResponse(CamelModel):
+    """Read-only view of HR's screening voice runtime. Mode/provider are
+    fixed (settings-driven, org-wide) — HR's screening runtime has no
+    per-call or per-org STT/TTS pipeline (app.ai_employees.hr.runtime.
+    screening_agent is OpenAI Realtime speech-to-speech only), so this is
+    deliberately not an editable form — see spec: don't build UI controls
+    for a backend path that doesn't exist.
+    """
+
+    mode: str
+    realtime_provider: str
+    realtime_model: str
+    realtime_voice: str

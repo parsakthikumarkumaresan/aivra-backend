@@ -33,6 +33,10 @@ dependencies = [
     "livekit-agents>=1.6.10,<1.7.0",
     "livekit-plugins-openai>=1.6.10,<1.7.0",
     "livekit-plugins-noise-cancellation>=0.3.0,<0.4.0",
+    "livekit-plugins-elevenlabs>=1.6.10,<1.7.0",
+    "livekit-plugins-sarvam>=1.6.10,<1.7.0",
+    "livekit-plugins-silero>=1.6.10,<1.7.0",
+    "livekit-plugins-turn-detector>=1.6.10,<1.7.0",
     "openai>=2.54.0,<3.0.0",
 ]
 

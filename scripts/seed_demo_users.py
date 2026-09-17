@@ -22,20 +22,21 @@ Usage: python scripts/seed_demo_users.py
 """
 
 import asyncio
+
 from sqlalchemy import select
 
-from app.shared.database.session import get_session_factory
-from app.shared.security.passwords import hash_password
-from app.shared.rbac.roles import OrgRole
-from app.identity.models.user import User
-from app.organizations.models.organization import Organization
-from app.organizations.models.membership import OrganizationMember, MembershipStatus
-from app.ai_employees.hr.models.job import HrJob, EmploymentType, JobStatus
+from app.ai_employees.hr.models.job import EmploymentType, HrJob, JobStatus
 from app.ai_employees.provisioning.models.provision import ProvisionStatus
 from app.ai_employees.provisioning.repositories.provision_repository import ProvisionRepository
 from app.ai_employees.provisioning.services.provisioning_service import ProvisioningService
 from app.ai_employees.registry.models.catalog import EmployeeTypeCode
 from app.ai_employees.registry.repositories.catalog_repository import CatalogRepository
+from app.identity.models.user import User
+from app.organizations.models.membership import MembershipStatus, OrganizationMember
+from app.organizations.models.organization import Organization
+from app.shared.database.session import get_session_factory
+from app.shared.rbac.roles import OrgRole
+from app.shared.security.passwords import hash_password
 
 PASSWORD = "Demo@12345"
 
@@ -72,6 +73,20 @@ USERS = [
         "seed_hr_job": False,
         "active_employee_types": [],
     },
+    {
+        # Local development/testing account (real voice engine
+        # implementation pass) — both AI Employees ACTIVE via the same
+        # real ProvisioningService state machine used above, not a
+        # weakened/bypassed auth path. Local dev use only; this script is
+        # never run against a production database.
+        "email": "test1@gmail.com",
+        "full_name": "Test Tester",
+        "org_name": "Voice Engine Test Co",
+        "org_slug": "voice-engine-test",
+        "seed_hr_job": True,
+        "active_employee_types": [EmployeeTypeCode.HR, EmployeeTypeCode.VOICE],
+        "password": "12345",
+    },
 ]
 
 
@@ -79,13 +94,17 @@ async def seed_demo_users():
     session_factory = get_session_factory()
     async with session_factory() as session:
         for spec in USERS:
-            # 1. User
+            # 1. User — password defaults to the shared demo PASSWORD but
+            # can be overridden per-entry (e.g. the local test1@gmail.com
+            # account below), since real users may need a specific,
+            # memorable credential rather than the shared demo one.
+            password = spec.get("password", PASSWORD)
             user_res = await session.execute(select(User).where(User.email == spec["email"]))
             user = user_res.scalar_one_or_none()
             if user is None:
                 user = User(
                     email=spec["email"],
-                    password_hash=hash_password(PASSWORD),
+                    password_hash=hash_password(password),
                     full_name=spec["full_name"],
                     is_active=True,
                 )
@@ -93,7 +112,7 @@ async def seed_demo_users():
                 await session.flush()
                 print(f"Created user {spec['email']}")
             else:
-                user.password_hash = hash_password(PASSWORD)
+                user.password_hash = hash_password(password)
                 user.is_active = True
                 user.failed_login_attempts = 0
                 user.locked_until = None

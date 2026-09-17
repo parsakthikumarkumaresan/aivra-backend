@@ -12,6 +12,7 @@ from app.ai_employees.hr.repositories.candidate_repository import CandidateRepos
 from app.ai_employees.hr.repositories.screening_repository import ScreeningRepository
 from app.ai_employees.hr.schemas.screening import (
     CompleteScreeningRequest,
+    HrVoiceConfigResponse,
     ScreeningPromptResponse,
     ScreeningResponse,
     UpdateScreeningPromptRequest,
@@ -19,6 +20,7 @@ from app.ai_employees.hr.schemas.screening import (
 from app.ai_employees.hr.services.screening_service import ScreeningService
 from app.audit.repositories.audit_repository import AuditRepository
 from app.audit.services.audit_service import AuditService
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.shared.database.session import get_db
 from app.shared.errors.exceptions import NotFoundError
@@ -54,6 +56,25 @@ async def list_screenings(
 ) -> list[ScreeningResponse]:
     screenings = await service.list_all(auth.require_organization_id())
     return [ScreeningResponse.model_validate(s) for s in screenings]
+
+
+@router.get("/voice-config", response_model=HrVoiceConfigResponse)
+async def get_hr_voice_config(
+    auth: AuthContext = Depends(require_hr_active),
+) -> HrVoiceConfigResponse:
+    """Read-only display of HR's fixed, settings-driven Realtime voice
+    configuration (see HrVoiceConfigResponse docstring) — surfaced on the
+    candidate call-triggering page so HR sees the same Mode/Provider/Model/
+    Voice concepts Jaan exposes, without implying a backend path (custom
+    STT+TTS, per-org model choice) that doesn't exist for HR screening.
+    """
+    settings = get_settings()
+    return HrVoiceConfigResponse(
+        mode="realtime",
+        realtime_provider="openai",
+        realtime_model=settings.hr_screening_realtime_model,
+        realtime_voice=settings.hr_screening_voice,
+    )
 
 
 @router.get("/candidates/{candidate_id}/prompt", response_model=ScreeningPromptResponse)

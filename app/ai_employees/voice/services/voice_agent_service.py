@@ -19,6 +19,7 @@ from app.ai_employees.voice.models.agent_version import (
 from app.ai_employees.voice.models.voice_agent import VoiceAgent, VoiceAgentStatus
 from app.ai_employees.voice.repositories.agent_version_repository import AgentVersionRepository
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
+from app.ai_employees.voice.schemas.voice_runtime_config import validate_agent_version_config
 from app.shared.errors.exceptions import ConflictError, NotFoundError, ValidationAppError
 
 _CONFIG_SECTIONS = (
@@ -108,6 +109,16 @@ class VoiceAgentService:
             if norm_section not in _CONFIG_SECTIONS:
                 raise ValidationAppError(f"Unknown config section: {section!r}")
             setattr(draft, norm_section, value)
+
+        # Server-side provider/model/voice validation (spec: real voice
+        # engine hardening) — validates the full merged state, not just the
+        # sections touched by this patch, so e.g. switching voiceConfig.mode
+        # to "realtime" is checked against transcriptionConfig too.
+        validate_agent_version_config(
+            voice_config=draft.voice_config,
+            transcription_config=draft.transcription_config,
+            advanced_config=draft.advanced_config,
+        )
         return draft
 
     async def submit_for_test(self, organization_id: str, agent_id: str) -> AgentVersion:

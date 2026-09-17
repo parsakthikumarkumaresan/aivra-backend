@@ -4,6 +4,7 @@ from app.shared.database.session import get_session_factory
 from app.ai_employees.hr.models.candidate import Candidate
 from app.organizations.models.organization import Organization
 
+# pyrefly: ignore [unannotated-return]
 async def main():
     f = get_session_factory()
     async with f() as s:

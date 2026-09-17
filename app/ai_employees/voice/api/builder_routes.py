@@ -8,15 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_employees.voice.api.dependencies import require_voice_internal_role
 from app.ai_employees.voice.models.agent_version import AgentVersion
 from app.ai_employees.voice.models.voice_agent import VoiceAgent
+from app.ai_employees.voice.providers.catalog import build_catalog_response
 from app.ai_employees.voice.repositories.agent_version_repository import AgentVersionRepository
 from app.ai_employees.voice.repositories.call_repository import (
     CallEventRepository,
     CallRepository,
+    RecordingRepository,
     TranscriptRepository,
 )
 from app.ai_employees.voice.repositories.tool_execution_repository import ToolExecutionRepository
 from app.ai_employees.voice.repositories.tool_repository import ToolRepository
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
+from app.ai_employees.voice.runtime.factory import get_voice_runtime_provider
 from app.ai_employees.voice.runtime.llm_provider import get_voice_llm_provider
 from app.ai_employees.voice.schemas.builder import (
     AgentVersionResponse,
@@ -25,15 +28,19 @@ from app.ai_employees.voice.schemas.builder import (
     ReplayTimelineEntry,
     ReplayToolCall,
     RollbackVoiceAgentRequest,
+    StartTestCallResponse,
     TestMessageRequest,
     TestTurnResultResponse,
     UpdateVoiceAgentDraftRequest,
     VoiceAgentResponse,
+    VoiceProviderCatalogResponse,
 )
+from app.ai_employees.voice.services.call_service import CallService
 from app.ai_employees.voice.services.voice_agent_service import VoiceAgentService
 from app.audit.models.audit_event import ActorType
 from app.audit.repositories.audit_repository import AuditRepository
 from app.audit.services.audit_service import AuditService
+from app.core.config import get_settings
 from app.shared.database.session import get_db
 from app.shared.errors.exceptions import NotFoundError
 from app.shared.security.dependencies import AuthContext
@@ -172,6 +179,19 @@ async def create_voice_agent(
     )
 
     return await _format_agent_response(agent, draft, tool_repo)
+
+
+@router.get("/providers", response_model=VoiceProviderCatalogResponse)
+async def list_voice_providers(
+    auth: AuthContext = Depends(require_voice_internal_role()),
+) -> VoiceProviderCatalogResponse:
+    """Real, curated provider/model/voice catalog (OpenAI Realtime,
+    OpenAI/ElevenLabs/Sarvam custom STT+TTS, turn-detection modes, ambient
+    sounds) — see app.ai_employees.voice.providers.catalog. Registered
+    before GET /{agent_id} so "providers" is never swallowed as an
+    agent_id path parameter. Never touches Settings; contains no API keys.
+    """
+    return VoiceProviderCatalogResponse.model_validate(build_catalog_response())
 
 
 @router.get("/{agent_id}", response_model=VoiceAgentResponse)
@@ -329,6 +349,56 @@ async def resume_voice_agent(
         resource_id=agent_id,
     )
     return await _format_agent_response(agent, draft, ToolRepository(db))
+
+
+@router.post(
+    "/{agent_id}/start-test-call",
+    response_model=StartTestCallResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_test_call(
+    agent_id: str,
+    auth: AuthContext = Depends(require_voice_internal_role()),
+    db: AsyncSession = Depends(get_db),
+) -> StartTestCallResponse:
+    """Places a real LiveKit room + agent dispatch for this agent's
+    published configuration and returns a browser-joinable token, so the
+    real voice runtime (STT/TTS/Realtime, whichever the agent is
+    configured for) can be exercised end-to-end without needing full
+    inbound/outbound telephony wiring. This is the first real caller of
+    CallService.start_call().
+    """
+    call_service = CallService(
+        CallRepository(db),
+        CallEventRepository(db),
+        TranscriptRepository(db),
+        RecordingRepository(db),
+        VoiceAgentRepository(db),
+        AgentVersionRepository(db),
+        get_voice_runtime_provider(),
+    )
+    org_id = auth.require_organization_id()
+    call, room_name, token = await call_service.start_call(
+        org_id,
+        agent_id,
+        caller_name="Test Caller",
+    )
+
+    await AuditService(AuditRepository(db)).record(
+        organization_id=org_id,
+        actor_id=auth.user.id,
+        actor_type=ActorType.USER,
+        action="voice_agent.test_call_started",
+        resource_type="voice_agent",
+        resource_id=agent_id,
+    )
+
+    return StartTestCallResponse(
+        call_id=call.id,
+        room_name=room_name,
+        token=token,
+        livekit_url=get_settings().livekit_url,
+    )
 
 
 @router.get("/{agent_id}/versions", response_model=list[AgentVersionResponse])
