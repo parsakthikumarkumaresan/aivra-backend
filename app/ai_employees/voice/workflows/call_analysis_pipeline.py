@@ -12,6 +12,7 @@ from app.ai_employees.voice.repositories.agent_version_repository import AgentVe
 from app.ai_employees.voice.repositories.call_analysis_repository import CallAnalysisRepository
 from app.ai_employees.voice.repositories.call_repository import CallRepository, TranscriptRepository
 from app.ai_employees.voice.repositories.call_usage_repository import CallUsageRepository
+from app.ai_employees.voice.repositories.credit_ledger_repository import CreditLedgerRepository
 from app.ai_employees.voice.repositories.tool_execution_repository import ToolExecutionRepository
 from app.ai_employees.voice.repositories.tool_repository import ToolRepository
 from app.ai_employees.voice.runtime.llm_provider import get_voice_llm_provider
@@ -21,6 +22,7 @@ from app.ai_employees.voice.schemas.analysis import (
     PROMPT_VERSION,
     CallAnalysisResult,
 )
+from app.ai_employees.voice.services.credit_ledger_service import CreditLedgerService
 from app.ai_employees.voice.services.tool_execution_service import ToolExecutionService
 from app.shared.ai_providers.llm import LLMProvider
 from app.shared.errors.exceptions import NotFoundError
@@ -39,7 +41,11 @@ async def run_call_analysis_pipeline(
 
     Stages:
     1. EXTRACT_ANALYSIS: Structured analysis via OpenAI extract_structured.
-    2. RECORD_USAGE: Token counts and cost calculation into CallUsage.
+    2. RECORD_USAGE: Token counts and cost calculation into CallUsage
+       (internal telemetry only — never shown to customers), AND the real
+       Jaan Voice Credit ledger debit for this call (Phase 4 spec section
+       5) based on measured call.duration_seconds — never the same
+       fabricated token estimates used for CallUsage's internal figures.
     3. EXECUTE_ACTIONS: Webhooks and configured tool triggers.
     """
     call_repo = CallRepository(session)
@@ -47,6 +53,7 @@ async def run_call_analysis_pipeline(
     analysis_repo = CallAnalysisRepository(session)
     usage_repo = CallUsageRepository(session)
     version_repo = AgentVersionRepository(session)
+    ledger_service = CreditLedgerService(CreditLedgerRepository(session))
 
     call = await call_repo.get_by_id(organization_id, call_id)
     if call is None:
@@ -138,6 +145,16 @@ async def run_call_analysis_pipeline(
         )
         await usage_repo.add(usage)
         await session.flush()
+
+    # Real Jaan Voice Credit debit — idempotent per call_id (see
+    # CreditLedgerService.debit_for_call), so a retried RQ job or a
+    # re-delivered LiveKit webhook that re-enters this pipeline never
+    # double-charges. Independent of the CallUsage estimate above: this
+    # uses call.duration_seconds directly, not fabricated token counts.
+    await ledger_service.debit_for_call(
+        organization_id, call_id, duration_seconds=call.duration_seconds
+    )
+    await session.flush()
 
     # -------------------------------------------------------------------------
     # STAGE 3: EXECUTE_ACTIONS

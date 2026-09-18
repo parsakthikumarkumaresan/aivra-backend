@@ -167,6 +167,24 @@ class Settings(BaseSettings):
     checkout_success_url: str = "http://localhost:5173/app/employees?checkout=success"
     checkout_cancel_url: str = "http://localhost:5173/app/employees?checkout=cancelled"
 
+    # --- Jaan Voice Credits (Phase 4) ---
+    # Deliberately isolated from the generic Stripe settings above: a
+    # one-time recharge checkout is a *separate* Stripe webhook endpoint
+    # from the subscription checkout (each Stripe webhook endpoint gets its
+    # own signing secret), so Jaan Voice billing never shares a code path
+    # with HR/subscription billing. Same Stripe account/API key, different
+    # webhook endpoint + secret.
+    voice_recharge_stripe_webhook_secret: SecretStr = Field(default=SecretStr(""))
+    voice_recharge_success_url: str = "http://localhost:5173/app/jaan/settings/billing?recharge=success"
+    voice_recharge_cancel_url: str = "http://localhost:5173/app/jaan/settings/billing?recharge=cancelled"
+    # Minimum whole-minute balance required to admit a NEW call. An
+    # in-progress call is never cut off mid-call for running out of credit —
+    # this only gates whether a *new* call is allowed to start.
+    voice_min_balance_minutes_to_start_call: int = 1
+    # Below this balance, GET /jaan/credits reports lowBalance=true so the
+    # UI can show a warning. Not yet configurable per-organization (Phase 9).
+    voice_low_balance_threshold_minutes: int = 100
+
     # --- Calendar ---
     calendar_provider: str = "google"
     google_calendar_client_id: str = ""

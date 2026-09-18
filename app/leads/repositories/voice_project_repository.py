@@ -29,6 +29,17 @@ class VoiceProjectRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_for_leads(self, lead_ids: list[str]) -> list[VoiceProject]:
+        """Batched lookup for the admin Leads directory (Phase 6) — one
+        query for a whole page of leads, matching the batching approach
+        already used for EmployeeProvision in the Phase 5 Customer
+        Directory (ProvisionRepository.list_for_organizations)."""
+        if not lead_ids:
+            return []
+        stmt = select(VoiceProject).where(VoiceProject.lead_id.in_(lead_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def add_requirement(self, requirement: Requirement) -> Requirement:
         self.session.add(requirement)
         await self.session.flush()

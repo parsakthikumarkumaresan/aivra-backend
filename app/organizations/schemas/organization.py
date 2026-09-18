@@ -42,3 +42,53 @@ class OrganizationMemberResponse(CamelModel):
 class InviteMemberRequest(CamelModel):
     email: str
     role: str
+
+
+# --- Admin Customer Directory / Detail (Phase 5) ---
+
+
+class AdminEmployeeProvisionSummary(CamelModel):
+    """AI Employee visibility for a customer (spec: 'AI Employee
+    visibility') — real app.ai_employees.provisioning.EmployeeProvision
+    rows, joined to their AIEmployeeType code/name. Never inferred."""
+
+    employee_type_code: str
+    employee_type_name: str
+    status: str
+    activated_at: datetime | None
+
+
+class AdminVoiceProjectSummary(CamelModel):
+    id: str
+    name: str
+    status: str
+
+
+class AdminOrganizationSummaryResponse(CamelModel):
+    id: str
+    name: str
+    slug: str
+    industry: str | None
+    status: str
+    created_at: datetime
+    employee_provisions: list[AdminEmployeeProvisionSummary]
+
+
+class AdminOrganizationListResponse(CamelModel):
+    items: list[AdminOrganizationSummaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminOrganizationDetailResponse(CamelModel):
+    id: str
+    name: str
+    slug: str
+    industry: str | None
+    timezone: str
+    status: str
+    created_at: datetime
+    employee_provisions: list[AdminEmployeeProvisionSummary]
+    voice_projects: list[AdminVoiceProjectSummary]
+    members: list[OrganizationMemberResponse]

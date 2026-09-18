@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from decimal import Decimal
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,27 @@ class PaymentProvider(ABC):
     ) -> CheckoutSession: ...
 
     @abstractmethod
+    async def create_payment_checkout_session(
+        self,
+        *,
+        organization_id: str,
+        customer_email: str,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        metadata: dict[str, str],
+        success_url: str,
+        cancel_url: str,
+        idempotency_key: str,
+    ) -> CheckoutSession:
+        """One-time payment checkout (mode=payment) — distinct from
+        ``create_checkout_session``, which is subscription-mode only and
+        requires a pre-created provider Price object. Used for Jaan Voice
+        Credit recharges, whose amount is admin-configured per package
+        rather than fixed in a provider-side Price."""
+        ...
+
+    @abstractmethod
     async def create_billing_portal_session(
         self, *, provider_customer_id: str
     ) -> PortalSession: ...
@@ -58,5 +80,10 @@ class PaymentProvider(ABC):
 
     @abstractmethod
     def verify_webhook_signature(
-        self, *, payload: bytes, signature_header: str
-    ) -> WebhookEvent: ...
+        self, *, payload: bytes, signature_header: str, webhook_secret: str | None = None
+    ) -> WebhookEvent:
+        """``webhook_secret`` overrides the provider's default signing
+        secret — each Stripe *webhook endpoint* has its own secret, so a
+        second endpoint (e.g. Jaan Voice recharge) verifies against its own
+        secret rather than the subscription webhook's."""
+        ...

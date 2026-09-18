@@ -48,3 +48,6 @@ class ErrorCode(StrEnum):
     # --- Billing / webhooks ---
     WEBHOOK_SIGNATURE_INVALID = "WEBHOOK_SIGNATURE_INVALID"
     PAYMENT_FAILED = "PAYMENT_FAILED"
+
+    # --- Jaan Voice credits ---
+    INSUFFICIENT_VOICE_CREDITS = "INSUFFICIENT_VOICE_CREDITS"

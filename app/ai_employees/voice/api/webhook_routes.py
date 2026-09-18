@@ -13,9 +13,19 @@ from app.ai_employees.voice.repositories.call_repository import (
     RecordingRepository,
     TranscriptRepository,
 )
+from app.ai_employees.voice.repositories.credit_ledger_repository import CreditLedgerRepository
+from app.ai_employees.voice.repositories.recharge_repository import (
+    RechargeOrderRepository,
+    RechargePackageRepository,
+)
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
 from app.ai_employees.voice.runtime.factory import get_voice_runtime_provider
 from app.ai_employees.voice.services.call_service import CallService
+from app.ai_employees.voice.services.credit_ledger_service import CreditLedgerService
+from app.ai_employees.voice.services.recharge_service import RechargeService
+from app.billing.providers.base import PaymentProvider
+from app.billing.providers.factory import get_payment_provider
+from app.billing.repositories.payment_event_repository import PaymentEventRepository
 from app.shared.database.session import get_db
 from app.workers.jobs.voice_jobs import enqueue_post_call_analysis
 
@@ -65,6 +75,7 @@ async def livekit_webhook(
         agent_repo,
         version_repo,
         runtime_provider,
+        CreditLedgerService(CreditLedgerRepository(db)),
     )
 
     call = await call_repo.get_by_room_name(room_name)
@@ -103,3 +114,31 @@ async def livekit_webhook(
             )
 
     return {"status": "processed", "event": event_name, "call_id": call.id}
+
+
+@router.post("/stripe-recharge", status_code=200, response_model=None)
+async def stripe_recharge_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payment_provider: PaymentProvider = Depends(get_payment_provider),
+) -> dict[str, Any]:
+    """Jaan Voice Credit recharge confirmations — a Stripe webhook endpoint
+    dedicated to this product, separate from the platform subscription
+    webhook (app.subscriptions.api.subscriptions:stripe_webhook), each with
+    its own signing secret in the Stripe dashboard. No auth dependency:
+    Stripe signs the payload itself, verified inside RechargeService via
+    ``PaymentProvider.verify_webhook_signature``.
+    """
+    payload = await request.body()
+    signature_header = request.headers.get("Stripe-Signature", "")
+
+    service = RechargeService(
+        db,
+        RechargePackageRepository(db),
+        RechargeOrderRepository(db),
+        PaymentEventRepository(db),
+        CreditLedgerService(CreditLedgerRepository(db)),
+        payment_provider,
+    )
+    await service.handle_stripe_webhook(payload=payload, signature_header=signature_header)
+    return {"received": True}

@@ -48,10 +48,12 @@ from app.ai_employees.voice.repositories.call_repository import (
     RecordingRepository,
     TranscriptRepository,
 )
+from app.ai_employees.voice.repositories.credit_ledger_repository import CreditLedgerRepository
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
 from app.ai_employees.voice.runtime import voice_pipeline
 from app.ai_employees.voice.schemas.voice_runtime_config import normalize_turn_mode, voice_mode_of
 from app.ai_employees.voice.services.call_service import CallService
+from app.ai_employees.voice.services.credit_ledger_service import CreditLedgerService
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.knowledge.repositories.document_chunk_repository import DocumentChunkRepository
@@ -95,6 +97,7 @@ def _call_service(session: DbAsyncSession) -> CallService:
         VoiceAgentRepository(session),
         AgentVersionRepository(session),
         get_voice_runtime_provider(),
+        CreditLedgerService(CreditLedgerRepository(session)),
     )
 
 

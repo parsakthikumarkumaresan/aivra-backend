@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import time
+from decimal import Decimal
 
 import httpx
 
@@ -68,6 +69,44 @@ class StripePaymentProvider(PaymentProvider):
             body = response.json()
         return CheckoutSession(checkout_url=body["url"], provider_session_id=body["id"])
 
+    async def create_payment_checkout_session(
+        self,
+        *,
+        organization_id: str,
+        customer_email: str,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        metadata: dict[str, str],
+        success_url: str,
+        cancel_url: str,
+        idempotency_key: str,
+    ) -> CheckoutSession:
+        unit_amount = int((amount * 100).to_integral_value())
+        form: dict[str, str] = {
+            "mode": "payment",
+            "line_items[0][price_data][currency]": currency.lower(),
+            "line_items[0][price_data][product_data][name]": description,
+            "line_items[0][price_data][unit_amount]": str(unit_amount),
+            "line_items[0][quantity]": "1",
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "client_reference_id": organization_id,
+            "customer_email": customer_email,
+        }
+        for key, value in metadata.items():
+            form[f"metadata[{key}]"] = value
+
+        async with self._client() as client:
+            response = await client.post(
+                "/checkout/sessions",
+                data=form,
+                headers={"Idempotency-Key": idempotency_key},
+            )
+            response.raise_for_status()
+            body = response.json()
+        return CheckoutSession(checkout_url=body["url"], provider_session_id=body["id"])
+
     async def create_billing_portal_session(self, *, provider_customer_id: str) -> PortalSession:
         async with self._client() as client:
             response = await client.post(
@@ -102,7 +141,9 @@ class StripePaymentProvider(PaymentProvider):
             response = await client.delete(f"/subscriptions/{provider_subscription_id}")
             response.raise_for_status()
 
-    def verify_webhook_signature(self, *, payload: bytes, signature_header: str) -> WebhookEvent:
+    def verify_webhook_signature(
+        self, *, payload: bytes, signature_header: str, webhook_secret: str | None = None
+    ) -> WebhookEvent:
         parts = dict(item.split("=", 1) for item in signature_header.split(",") if "=" in item)
         timestamp = parts.get("t")
         signature = parts.get("v1")
@@ -112,9 +153,14 @@ class StripePaymentProvider(PaymentProvider):
         if abs(time.time() - int(timestamp)) > _WEBHOOK_TOLERANCE_SECONDS:
             raise WebhookSignatureInvalidError("Webhook timestamp outside tolerance window.")
 
+        secret = (
+            webhook_secret
+            if webhook_secret is not None
+            else self.settings.stripe_webhook_secret.get_secret_value()
+        )
         signed_payload = f"{timestamp}.{payload.decode('utf-8')}".encode()
         expected_signature = hmac.new(
-            self.settings.stripe_webhook_secret.get_secret_value().encode(),
+            secret.encode(),
             signed_payload,
             hashlib.sha256,
         ).hexdigest()

@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_employees.provisioning.repositories.provision_repository import ProvisionRepository
 from app.ai_employees.provisioning.services.provisioning_service import ProvisioningService
 from app.ai_employees.registry.repositories.catalog_repository import CatalogRepository
+from app.audit.models.audit_event import ActorType
+from app.audit.repositories.audit_repository import AuditRepository
+from app.audit.services.audit_service import AuditService
 from app.leads.models.voice_project import VoiceProjectStatus
 from app.leads.repositories.voice_project_repository import VoiceProjectRepository
 from app.leads.schemas.voice_project import (
@@ -23,7 +26,7 @@ from app.leads.schemas.voice_project import (
 from app.leads.services.voice_project_service import VoiceProjectService
 from app.shared.database.session import get_db
 from app.shared.rbac.roles import PlatformRole
-from app.shared.security.dependencies import require_platform_role
+from app.shared.security.dependencies import AuthContext, require_platform_role
 
 router = APIRouter(
     prefix="/internal/voice-projects",
@@ -100,6 +103,10 @@ async def list_requirements(
 async def transition_voice_project(
     project_id: str,
     payload: TransitionVoiceProjectRequest,
+    auth: AuthContext = Depends(
+        require_platform_role(PlatformRole.AIVRA_ADMIN, PlatformRole.AIVRA_ENGINEER)
+    ),
+    db: AsyncSession = Depends(get_db),
     service: VoiceProjectService = Depends(_service),
 ) -> VoiceProjectResponse:
     project = await service.transition(
@@ -107,4 +114,17 @@ async def transition_voice_project(
         VoiceProjectStatus(payload.target_status),
         failure_reason=payload.failure_reason,
     )
+    # Only audit-log once the project has a real organization to attribute
+    # the event to — AuditEvent is organization-scoped (NOT NULL FK), and
+    # early phases (discovery/configuration/...) can legitimately have no
+    # organization_id yet.
+    if project.organization_id is not None:
+        await AuditService(AuditRepository(db)).record(
+            organization_id=project.organization_id,
+            actor_id=auth.user.id,
+            actor_type=ActorType.USER,
+            action="voice_project.transitioned",
+            resource_type="voice_project",
+            resource_id=project.id,
+        )
     return VoiceProjectResponse.model_validate(project)

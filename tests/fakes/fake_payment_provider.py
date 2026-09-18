@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import itertools
 import json
+from decimal import Decimal
 
 from app.billing.providers.base import CheckoutSession, PaymentProvider, PortalSession, WebhookEvent
 
@@ -33,6 +34,25 @@ class FakePaymentProvider(PaymentProvider):
             provider_session_id=session_id,
         )
 
+    async def create_payment_checkout_session(
+        self,
+        *,
+        organization_id: str,
+        customer_email: str,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        metadata: dict[str, str],
+        success_url: str,
+        cancel_url: str,
+        idempotency_key: str,
+    ) -> CheckoutSession:
+        session_id = f"cs_test_{next(self._counter)}"
+        return CheckoutSession(
+            checkout_url=f"https://checkout.example.test/{session_id}",
+            provider_session_id=session_id,
+        )
+
     async def create_billing_portal_session(self, *, provider_customer_id: str) -> PortalSession:
         return PortalSession(portal_url=f"https://billing.example.test/{provider_customer_id}")
 
@@ -45,7 +65,9 @@ class FakePaymentProvider(PaymentProvider):
     async def cancel_subscription(self, *, provider_subscription_id: str) -> None:
         self.cancelled_subscription_ids.append(provider_subscription_id)
 
-    def verify_webhook_signature(self, *, payload: bytes, signature_header: str) -> WebhookEvent:
+    def verify_webhook_signature(
+        self, *, payload: bytes, signature_header: str, webhook_secret: str | None = None
+    ) -> WebhookEvent:
         # Tests build the event body directly and pass a sentinel header —
         # real signature HMAC verification is covered by
         # tests/unit/test_stripe_provider.py against StripePaymentProvider.

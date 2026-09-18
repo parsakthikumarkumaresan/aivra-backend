@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.shared.database.base import Base, TimestampMixin
 from app.shared.database.ids import IdPrefix, new_id
 from app.shared.database.types import str_enum_column
+from app.shared.state_machine import StateMachine
 
 
 class LeadType(StrEnum):
@@ -24,6 +25,23 @@ class LeadStatus(StrEnum):
     QUALIFIED = "qualified"
     CONVERTED = "converted"
     REJECTED = "rejected"
+
+
+# Phase 6 sales-triage lifecycle — separate from VoiceProject's own
+# implementation lifecycle (VOICE_PROJECT_TRANSITIONS in
+# app.leads.models.voice_project). CONVERTED is intentionally NOT reachable
+# through this generic table: converting a lead also requires attaching a
+# real organization_id, which only POST /leads/{id}/convert does — see
+# LeadService.convert_lead, unchanged by this state machine.
+LEAD_TRANSITIONS = StateMachine[LeadStatus](
+    {
+        LeadStatus.NEW: frozenset({LeadStatus.CONTACTED, LeadStatus.REJECTED}),
+        LeadStatus.CONTACTED: frozenset({LeadStatus.QUALIFIED, LeadStatus.REJECTED}),
+        LeadStatus.QUALIFIED: frozenset({LeadStatus.REJECTED}),
+        LeadStatus.CONVERTED: frozenset(),
+        LeadStatus.REJECTED: frozenset(),
+    }
+)
 
 
 class Lead(Base, TimestampMixin):

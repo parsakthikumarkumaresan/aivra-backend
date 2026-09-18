@@ -44,3 +44,37 @@ class ConvertLeadRequest(CamelModel):
 class VoiceCustomizationResponse(CamelModel):
     lead: LeadResponse
     voice_project_id: str
+
+
+# --- Admin Leads directory / detail (Phase 6) ---
+
+
+class AdminLeadVoiceProjectSummary(CamelModel):
+    id: str
+    name: str
+    status: str
+
+
+class AdminLeadResponse(CamelModel):
+    id: str
+    type: str
+    status: str
+    contact_name: str
+    contact_email: str
+    company_name: str | None
+    phone: str | None
+    message: str | None
+    organization_id: str | None
+    created_at: datetime
+    voice_project: AdminLeadVoiceProjectSummary | None
+
+
+class AdminLeadListResponse(CamelModel):
+    items: list[AdminLeadResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TransitionLeadRequest(CamelModel):
+    target_status: str

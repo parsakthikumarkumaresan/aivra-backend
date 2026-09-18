@@ -110,3 +110,8 @@ class IdempotencyKeyConflictError(AppError):
 class WebhookSignatureInvalidError(AppError):
     status_code = 400
     code = ErrorCode.WEBHOOK_SIGNATURE_INVALID
+
+
+class InsufficientCreditsError(AppError):
+    status_code = 402
+    code = ErrorCode.INSUFFICIENT_VOICE_CREDITS

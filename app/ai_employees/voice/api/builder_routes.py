@@ -17,6 +17,7 @@ from app.ai_employees.voice.repositories.call_repository import (
     RecordingRepository,
     TranscriptRepository,
 )
+from app.ai_employees.voice.repositories.credit_ledger_repository import CreditLedgerRepository
 from app.ai_employees.voice.repositories.tool_execution_repository import ToolExecutionRepository
 from app.ai_employees.voice.repositories.tool_repository import ToolRepository
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
@@ -40,6 +41,7 @@ from app.ai_employees.voice.schemas.builder import (
     VoiceProviderCatalogResponse,
 )
 from app.ai_employees.voice.services.call_service import CallService
+from app.ai_employees.voice.services.credit_ledger_service import CreditLedgerService
 from app.ai_employees.voice.services.voice_agent_service import VoiceAgentService
 from app.audit.models.audit_event import ActorType
 from app.audit.repositories.audit_repository import AuditRepository
@@ -399,6 +401,7 @@ async def start_test_call(
         VoiceAgentRepository(db),
         AgentVersionRepository(db),
         get_voice_runtime_provider(),
+        CreditLedgerService(CreditLedgerRepository(db)),
     )
     org_id = auth.require_organization_id()
     caller_number = req.user_number if req else None

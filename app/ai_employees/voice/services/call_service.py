@@ -18,6 +18,8 @@ from app.ai_employees.voice.repositories.call_repository import (
 )
 from app.ai_employees.voice.repositories.voice_agent_repository import VoiceAgentRepository
 from app.ai_employees.voice.runtime.base import VoiceRuntimeProvider
+from app.ai_employees.voice.services.credit_ledger_service import CreditLedgerService
+from app.core.config import get_settings
 from app.shared.errors.exceptions import ConflictError, NotFoundError
 
 logger = structlog.get_logger(__name__)
@@ -33,6 +35,7 @@ class CallService:
         agent_repo: VoiceAgentRepository,
         version_repo: AgentVersionRepository,
         runtime_provider: VoiceRuntimeProvider,
+        credit_ledger_service: CreditLedgerService,
     ) -> None:
         self.call_repo = call_repo
         self.event_repo = event_repo
@@ -41,6 +44,7 @@ class CallService:
         self.agent_repo = agent_repo
         self.version_repo = version_repo
         self.runtime_provider = runtime_provider
+        self.credit_ledger_service = credit_ledger_service
 
     async def start_call(
         self,
@@ -54,6 +58,16 @@ class CallService:
         provider_call_id: str | None = None,
         use_draft: bool = False,
     ) -> tuple[Call, str, str, str | None]:
+        # Call admission gate (Phase 4 spec section 6) — checked before any
+        # LiveKit room/dispatch work so an org with no Jaan Voice Credits
+        # left never has a real room created for nothing. Raises
+        # InsufficientCreditsError (402) if the balance is below the
+        # configured minimum; an already-admitted call is never
+        # interrupted mid-call for running low afterwards.
+        await self.credit_ledger_service.assert_can_start_call(
+            organization_id, minimum_balance=get_settings().voice_min_balance_minutes_to_start_call
+        )
+
         agent = await self.agent_repo.get_by_id(organization_id, voice_agent_id)
         if agent is None:
             raise NotFoundError("Voice agent not found.")

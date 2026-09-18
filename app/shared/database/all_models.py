@@ -31,7 +31,10 @@ from app.ai_employees.voice.models.call_analysis import CallAnalysis  # noqa: F4
 from app.ai_employees.voice.models.call_event import CallEvent  # noqa: F401
 from app.ai_employees.voice.models.call_usage import CallUsage  # noqa: F401
 from app.ai_employees.voice.models.compliance import ComplianceRecord, DndEntry  # noqa: F401
+from app.ai_employees.voice.models.credit_transaction import CreditTransaction  # noqa: F401
 from app.ai_employees.voice.models.phone_number import PhoneNumber  # noqa: F401
+from app.ai_employees.voice.models.recharge_order import RechargeOrder  # noqa: F401
+from app.ai_employees.voice.models.recharge_package import RechargePackage  # noqa: F401
 from app.ai_employees.voice.models.recording import Recording  # noqa: F401
 from app.ai_employees.voice.models.routing_rule import RoutingRule  # noqa: F401
 from app.ai_employees.voice.models.sip_trunk import SipTrunk  # noqa: F401

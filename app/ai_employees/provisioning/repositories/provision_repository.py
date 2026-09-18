@@ -24,6 +24,20 @@ class ProvisionRepository(OrgScopedRepository[EmployeeProvision]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_for_organizations(
+        self, organization_ids: list[str]
+    ) -> list[EmployeeProvision]:
+        """Batched lookup for the admin Customer Directory (Phase 5) — one
+        query for a whole page of organizations, not one per row.
+        """
+        if not organization_ids:
+            return []
+        stmt = select(EmployeeProvision).where(
+            EmployeeProvision.organization_id.in_(organization_ids)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def add_event(self, event: ProvisioningEvent) -> ProvisioningEvent:
         self.session.add(event)
         await self.session.flush()

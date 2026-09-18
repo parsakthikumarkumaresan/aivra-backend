@@ -74,3 +74,6 @@ class IdPrefix:
     INTEGRATION = "integ"
     IDEMPOTENCY_KEY = "idem"
     CALL_USAGE = "calluse"
+    CREDIT_TRANSACTION = "ctxn"
+    RECHARGE_ORDER = "rchg"
+    RECHARGE_PACKAGE = "rpkg"
