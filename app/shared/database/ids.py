@@ -77,3 +77,5 @@ class IdPrefix:
     CREDIT_TRANSACTION = "ctxn"
     RECHARGE_ORDER = "rchg"
     RECHARGE_PACKAGE = "rpkg"
+    QUOTE = "quote"
+    QUOTE_LINE_ITEM = "qli"

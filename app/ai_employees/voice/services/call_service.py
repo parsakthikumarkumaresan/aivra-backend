@@ -122,8 +122,7 @@ class CallService:
                     provider_call_id = sip_call_id
                 else:
                     sip_dial_error = (
-                        "No SIP trunk is configured for outbound dialing "
-                        "(VOICE_SIP_TRUNK_ID)."
+                        "No SIP trunk is configured for outbound dialing " "(VOICE_SIP_TRUNK_ID)."
                     )
             except Exception as exc:
                 logger.warning(

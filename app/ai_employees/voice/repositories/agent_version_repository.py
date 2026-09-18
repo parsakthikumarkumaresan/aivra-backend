@@ -30,9 +30,7 @@ class AgentVersionRepository(OrgScopedRepository[AgentVersion]):
         result = await self.session.execute(stmt)
         return result.scalars().first()
 
-    async def get_latest_version_number(
-        self, organization_id: str, voice_agent_id: str
-    ) -> int:
+    async def get_latest_version_number(self, organization_id: str, voice_agent_id: str) -> int:
         stmt = (
             select(AgentVersion.version_number)
             .where(

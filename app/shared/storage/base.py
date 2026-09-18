@@ -22,9 +22,7 @@ class StoredObject:
 
 class ObjectStorage(ABC):
     @abstractmethod
-    async def put_object(
-        self, *, key: str, content: bytes, content_type: str
-    ) -> StoredObject: ...
+    async def put_object(self, *, key: str, content: bytes, content_type: str) -> StoredObject: ...
 
     @abstractmethod
     async def get_object(self, *, key: str) -> bytes:
@@ -41,8 +39,6 @@ class ObjectStorage(ABC):
     async def delete_object(self, *, key: str) -> None: ...
 
 
-def build_object_key(
-    *, organization_id: str, category: str, object_id: str, filename: str
-) -> str:
+def build_object_key(*, organization_id: str, category: str, object_id: str, filename: str) -> str:
     safe_filename = filename.replace("/", "_").replace("\\", "_")
     return f"{organization_id}/{category}/{object_id}/{safe_filename}"

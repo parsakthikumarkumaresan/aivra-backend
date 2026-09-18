@@ -43,9 +43,7 @@ class TelephonyService:
         self.agent_repo = agent_repo
 
     # -- Telephony Provider Accounts --
-    async def list_provider_accounts(
-        self, organization_id: str
-    ) -> list[TelephonyProviderAccount]:
+    async def list_provider_accounts(self, organization_id: str) -> list[TelephonyProviderAccount]:
         return await self.account_repo.list_for_organization(organization_id)
 
     async def connect_provider_account(

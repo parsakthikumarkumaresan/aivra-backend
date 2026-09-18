@@ -231,7 +231,7 @@ class VoiceAnalyticsRepository:
         return dict(result.mappings().one())
 
     async def get_duration_by_state(self, filters: AnalyticsFilters) -> list[dict]:
-        """"Connected" and "human answered" share duration_seconds since no
+        """ "Connected" and "human answered" share duration_seconds since no
         sub-state transition timestamps are persisted yet (see Call model —
         only started_at/ended_at exist). "No response" (connected but the
         customer never said anything) IS derivable from real transcript

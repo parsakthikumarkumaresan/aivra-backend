@@ -56,6 +56,7 @@ from app.leads.models.requirement import Requirement  # noqa: F401
 from app.leads.models.voice_project import VoiceProject  # noqa: F401
 from app.organizations.models.membership import OrganizationMember  # noqa: F401
 from app.organizations.models.organization import Organization  # noqa: F401
+from app.quotes.models.quote import Quote, QuoteLineItem  # noqa: F401
 from app.shared.database.base import Base
 from app.subscriptions.models.plan import Plan  # noqa: F401
 from app.subscriptions.models.subscription import Subscription  # noqa: F401

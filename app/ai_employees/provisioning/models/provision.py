@@ -30,9 +30,7 @@ class ProvisionStatus(StrEnum):
 
 PROVISION_TRANSITIONS = StateMachine[ProvisionStatus](
     {
-        ProvisionStatus.NOT_PROVISIONED: frozenset(
-            {ProvisionStatus.PENDING_ACTIVATION}
-        ),
+        ProvisionStatus.NOT_PROVISIONED: frozenset({ProvisionStatus.PENDING_ACTIVATION}),
         ProvisionStatus.PENDING_ACTIVATION: frozenset(
             {ProvisionStatus.ACTIVE, ProvisionStatus.DEPLOYMENT_FAILED, ProvisionStatus.CANCELLED}
         ),

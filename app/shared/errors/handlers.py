@@ -1,6 +1,6 @@
 """FastAPI exception handlers producing the stable error envelope.
 
-    {"error": {"code": "...", "message": "...", "details": {}, "request_id": "req_..."}}
+{"error": {"code": "...", "message": "...", "details": {}, "request_id": "req_..."}}
 """
 
 from __future__ import annotations
@@ -50,9 +50,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def handle_http_exception(
-        _request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def handle_http_exception(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(ErrorCode.INTERNAL_ERROR, str(exc.detail)),

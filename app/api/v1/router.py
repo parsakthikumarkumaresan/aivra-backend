@@ -26,6 +26,7 @@ from app.leads.api.leads import router as leads_router
 from app.leads.api.voice_projects import router as voice_projects_router
 from app.organizations.api.admin_organizations import router as admin_organizations_router
 from app.organizations.api.organizations import router as organizations_router
+from app.quotes.api.admin_quotes import router as admin_quotes_router
 from app.subscriptions.api.subscriptions import billing_router
 from app.subscriptions.api.subscriptions import router as subscriptions_router
 
@@ -34,6 +35,7 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(organizations_router)
 api_router.include_router(admin_organizations_router)
+api_router.include_router(admin_quotes_router)
 api_router.include_router(employees_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(billing_router)

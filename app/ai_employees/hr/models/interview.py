@@ -25,9 +25,7 @@ INTERVIEW_TRANSITIONS = StateMachine[InterviewStatus](
         InterviewStatus.PENDING_APPROVAL: frozenset(
             {InterviewStatus.APPROVED, InterviewStatus.CANCELLED}
         ),
-        InterviewStatus.APPROVED: frozenset(
-            {InterviewStatus.SCHEDULED, InterviewStatus.CANCELLED}
-        ),
+        InterviewStatus.APPROVED: frozenset({InterviewStatus.SCHEDULED, InterviewStatus.CANCELLED}),
         InterviewStatus.SCHEDULED: frozenset(
             {InterviewStatus.COMPLETED, InterviewStatus.CANCELLED}
         ),

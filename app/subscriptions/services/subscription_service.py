@@ -242,9 +242,8 @@ class SubscriptionService:
 
     @staticmethod
     def _organization_id_from_event(data_object: dict) -> str | None:
-        return (
-            data_object.get("client_reference_id")
-            or data_object.get("metadata", {}).get("organization_id")
+        return data_object.get("client_reference_id") or data_object.get("metadata", {}).get(
+            "organization_id"
         )
 
     async def _handle_checkout_completed(self, data_object: dict) -> None:
@@ -308,9 +307,7 @@ class SubscriptionService:
                 subscription.employee_type_id,
                 SubscriptionStatus.ACTIVE,
             )
-        subscription.current_period_end = datetime.fromtimestamp(
-            data_object["period_end"], tz=UTC
-        )
+        subscription.current_period_end = datetime.fromtimestamp(data_object["period_end"], tz=UTC)
 
     async def _handle_invoice_payment_failed(self, data_object: dict) -> None:
         provider_subscription_id = data_object.get("subscription")

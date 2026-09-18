@@ -164,9 +164,7 @@ class AuthService:
             role=role.value,
         )
 
-    async def _default_org_context(
-        self, user: User
-    ) -> tuple[str | None, OrgRole | None]:
+    async def _default_org_context(self, user: User) -> tuple[str | None, OrgRole | None]:
         if user.platform_role is not None:
             return None, None
         memberships = await self.membership_repo.list_memberships_for_user(user.id)

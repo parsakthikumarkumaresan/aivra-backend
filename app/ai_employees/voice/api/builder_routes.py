@@ -90,14 +90,12 @@ async def _format_agent_response(
             "method": t.method.value,
             "endpoint": t.endpoint,
             "authType": t.auth_type.value,
-            "inputs": [
-                {"name": k, **v}
-                for k, v in t.input_schema.get("properties", {}).items()
-            ] if isinstance(t.input_schema.get("properties"), dict) else [],
-            "outputs": [
-                {"name": k, **v}
-                for k, v in t.output_schema.get("properties", {}).items()
-            ] if isinstance(t.output_schema.get("properties"), dict) else [],
+            "inputs": [{"name": k, **v} for k, v in t.input_schema.get("properties", {}).items()]
+            if isinstance(t.input_schema.get("properties"), dict)
+            else [],
+            "outputs": [{"name": k, **v} for k, v in t.output_schema.get("properties", {}).items()]
+            if isinstance(t.output_schema.get("properties"), dict)
+            else [],
             "enabled": t.enabled,
         }
         for t in tools_db
@@ -576,9 +574,7 @@ async def list_replay_conversations(
     return replays
 
 
-@router.get(
-    "/{agent_id}/replay-conversations/{call_id}", response_model=ReplayConversationResponse
-)
+@router.get("/{agent_id}/replay-conversations/{call_id}", response_model=ReplayConversationResponse)
 async def get_replay_conversation(
     agent_id: str,
     call_id: str,

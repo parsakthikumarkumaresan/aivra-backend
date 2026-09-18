@@ -46,9 +46,7 @@ class Settings(BaseSettings):
     request_id_header: str = "X-Request-ID"
 
     # --- Database ---
-    database_url: str = Field(
-        default="postgresql+asyncpg://aivra:aivra@localhost:5432/aivra"
-    )
+    database_url: str = Field(default="postgresql+asyncpg://aivra:aivra@localhost:5432/aivra")
     database_pool_size: int = 10
     database_max_overflow: int = 10
     database_echo: bool = False
@@ -175,8 +173,12 @@ class Settings(BaseSettings):
     # with HR/subscription billing. Same Stripe account/API key, different
     # webhook endpoint + secret.
     voice_recharge_stripe_webhook_secret: SecretStr = Field(default=SecretStr(""))
-    voice_recharge_success_url: str = "http://localhost:5173/app/jaan/settings/billing?recharge=success"
-    voice_recharge_cancel_url: str = "http://localhost:5173/app/jaan/settings/billing?recharge=cancelled"
+    voice_recharge_success_url: str = (
+        "http://localhost:5173/app/jaan/settings/billing?recharge=success"
+    )
+    voice_recharge_cancel_url: str = (
+        "http://localhost:5173/app/jaan/settings/billing?recharge=cancelled"
+    )
     # Minimum whole-minute balance required to admit a NEW call. An
     # in-progress call is never cut off mid-call for running out of credit —
     # this only gates whether a *new* call is allowed to start.

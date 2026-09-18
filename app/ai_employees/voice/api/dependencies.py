@@ -47,4 +47,3 @@ def require_voice_internal_role() -> Callable[..., Awaitable[AuthContext]]:
         return auth
 
     return _dependency
-

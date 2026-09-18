@@ -33,9 +33,7 @@ class TwilioTelephonyProvider(TelephonyProvider):
             if area_code:
                 data["AreaCode"] = area_code
 
-            response = await client.post(
-                url, data=data, auth=(self.account_sid, self.auth_token)
-            )
+            response = await client.post(url, data=data, auth=(self.account_sid, self.auth_token))
             if response.status_code >= 400:
                 raise AppError(f"Twilio provision number failed: {response.text}")
 
@@ -75,9 +73,7 @@ class TwilioTelephonyProvider(TelephonyProvider):
                 "To": to_number,
                 "Url": f"https://api.aivra.ai/v1/internal/voice/telephony/sip-twiml?room={room_name}",
             }
-            response = await client.post(
-                url, data=data, auth=(self.account_sid, self.auth_token)
-            )
+            response = await client.post(url, data=data, auth=(self.account_sid, self.auth_token))
             if response.status_code >= 400:
                 raise AppError(f"Twilio call origination failed: {response.text}")
 

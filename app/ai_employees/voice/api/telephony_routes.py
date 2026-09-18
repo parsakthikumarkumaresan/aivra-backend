@@ -195,9 +195,7 @@ async def assign_phone_number(
         RoutingRuleRepository(db),
         VoiceAgentRepository(db),
     )
-    phone = await service.assign_phone_number_to_agent(
-        org_id, phone_number_id, req.voice_agent_id
-    )
+    phone = await service.assign_phone_number_to_agent(org_id, phone_number_id, req.voice_agent_id)
     await AuditService(AuditRepository(db)).record(
         organization_id=org_id,
         actor_id=auth.user.id,

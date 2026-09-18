@@ -21,9 +21,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         api_key = self.settings.openai_api_key.get_secret_value()
         if not api_key:
-            raise OpenAIConfigurationError(
-                "OPENAI_API_KEY is not configured — cannot call OpenAI."
-            )
+            raise OpenAIConfigurationError("OPENAI_API_KEY is not configured — cannot call OpenAI.")
 
         async with httpx.AsyncClient(base_url=_OPENAI_API_BASE, timeout=60.0) as client:
             response = await client.post(

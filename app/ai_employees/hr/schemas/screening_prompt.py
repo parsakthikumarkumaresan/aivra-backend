@@ -27,10 +27,10 @@ SCREENING_PROMPT_SYSTEM_PROMPT = (
     "You are given the AI agent's configured display name, the company "
     "name, the candidate's name, and the job title. The 'opening' field is "
     "what the agent says ONLY AFTER the candidate has already answered the "
-    "phone and spoken first (e.g. said \"Hello?\") — it must naturally "
-    "introduce the agent BY that exact name and company (e.g. \"Hi, this "
+    'phone and spoken first (e.g. said "Hello?") — it must naturally '
+    'introduce the agent BY that exact name and company (e.g. "Hi, this '
     "is {agentName} calling from {companyName}. Am I speaking with "
-    "{candidateName}?\"), then briefly explain the purpose and ask "
+    '{candidateName}?"), then briefly explain the purpose and ask '
     "permission for a short conversation — do not skip the identity "
     "confirmation or the permission ask. The 'availability' field must "
     "cover BOTH notice period/joining timeline AND whether the candidate "

@@ -21,9 +21,7 @@ def _to_response(
         id=employee_type.id,
         type=employee_type.code,
         name=catalog_item.name if catalog_item else employee_type.name,
-        description=(
-            catalog_item.description if catalog_item else employee_type.description
-        ),
+        description=(catalog_item.description if catalog_item else employee_type.description),
         status=provision.status if provision else ProvisionStatus.NOT_PROVISIONED,
         commercial_model=employee_type.commercial_model,
         base_price_monthly=(

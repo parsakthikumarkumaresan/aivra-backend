@@ -117,9 +117,7 @@ def resolve_bucket(start: datetime, end: datetime) -> str:
 
 
 class VoiceAnalyticsService:
-    def __init__(
-        self, repo: VoiceAnalyticsRepository, agent_repo: VoiceAgentRepository
-    ) -> None:
+    def __init__(self, repo: VoiceAnalyticsRepository, agent_repo: VoiceAgentRepository) -> None:
         self.repo = repo
         self.agent_repo = agent_repo
 
